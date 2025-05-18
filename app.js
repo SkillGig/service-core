@@ -2,7 +2,7 @@ import express from "express";
 import bodyParse from "body-parser";
 
 const app = express();
-const port = 4001;
+const port = 4024;
 import { pool } from "./config/db.js";
 import logger from "./config/logger.js";
 

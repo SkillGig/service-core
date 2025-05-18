@@ -1,10 +1,10 @@
 import { createPool } from "mysql2";
 
 const dbConfig = {
-  host: "<HOST>",
-  user: "<USER>",
-  password: "<PASSWORD>",
-  database: "<DB>",
+  host: "lms-stage.cri6wqugy0ti.ap-south-1.rds.amazonaws.com",
+  user: "admin",
+  password: "1BlackHorse>2BlackCar",
+  database: "lms-backend",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
