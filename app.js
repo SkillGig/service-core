@@ -5,6 +5,7 @@ const app = express();
 const port = 4024;
 import { pool } from "./config/db.js";
 import logger from "./config/logger.js";
+import UserStreaksRoutes from "./api/v1/routes/user-streak.routes.js";
 
 app.use(bodyParse.json({ limit: "50mb" }));
 app.use(bodyParse.urlencoded({ extended: false }));
@@ -33,6 +34,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/streaks', UserStreaksRoutes)
 
 app.use("/", (req, res) => {
   res.json({

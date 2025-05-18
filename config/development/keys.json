@@ -1,6 +1,6 @@
 {
-  "accessTokenSecret": "YzlmZTViYmNlNGIyZTYwYTAzMmVkZjlkYTkwYmM1Njg=",
-  "refreshTokenSecret": "YWZjZmM2ZTIxZjFhZWM3MGFiMjM5MjRlYzdhOGY5YTFjOGQyZTI3ZGI1YTZkNTk4N2YzMDQyYWI3NGI1NWYzNQ==",
+  "accessTokenSecretForUser": "YzlmZTViYmNlNGIyZTYwYTAzMmVkZjlkYTkwYmM1Njg=",
+  "refreshTokenSecretForUser": "YWZjZmM2ZTIxZjFhZWM3MGFiMjM5MjRlYzdhOGY5YTFjOGQyZTI3ZGI1YTZkNTk4N2YzMDQyYWI3NGI1NWYzNQ==",
   "accessTokenSecretForAdmin": "NDhiZmU3ZDhkN2U1N2NmMjI5MTQ5ZGNmODBjYTc0OTg=",
   "accessTokenSecretForCoach": "ZGY0MTQ4ZTZhZWNjNjBiNTVjN2Q3NjJmYzRkYjA3NmU=",
   "jwtExpirations": {

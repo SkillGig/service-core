@@ -8,6 +8,8 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  timezone: "+05:30",
+  dateStrings: true,
 };
 
 export const pool = createPool(dbConfig);
