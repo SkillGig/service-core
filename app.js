@@ -2,10 +2,10 @@ import express from "express";
 import bodyParse from "body-parser";
 
 const app = express();
-const port = 4024;
+const port = 4002;
 import { pool } from "./config/db.js";
 import logger from "./config/logger.js";
-import UserStreaksRoutes from "./api/v1/routes/user-streak.routes.js";
+import UserRoutes from "./api/v1/routes/user-common.routes.js";
 
 app.use(bodyParse.json({ limit: "50mb" }));
 app.use(bodyParse.urlencoded({ extended: false }));
@@ -34,7 +34,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/streaks', UserStreaksRoutes)
+app.use("/user", UserRoutes);
 
 app.use("/", (req, res) => {
   res.json({
