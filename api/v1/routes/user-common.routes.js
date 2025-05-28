@@ -3,12 +3,15 @@ import { authenticateUserTokenMiddleware } from "../middlewares/user.handler.js"
 import {
   getAllUserNotifications,
   markNotificationsAsSeen,
+  userConfigController,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 
 const router = Router();
 
-router.use("/streaks", UserStreaksRoutes);
+router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
+
+router.use("/config", authenticateUserTokenMiddleware, userConfigController);
 
 router.get(
   "/notifications/all",
