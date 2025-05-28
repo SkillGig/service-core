@@ -103,7 +103,7 @@ export const userDetailsQuery = async (userId) => {
        oec.push_notifications AS enablePushNotifications,
        oec.show_flash_cards AS showFlashCards,
        oec.show_milestones AS showMilestones,
-       oec.show_interview_prep AS showInterviewPre,
+       oec.show_interview_prep AS showInterviewPrep,
        oec.show_focus_timer AS showFocusTimer,
        oec.show_user_roadmap AS showUserRoadmap,
        oec.show_leaderboard AS showLeaderBoard,
