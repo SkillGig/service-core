@@ -73,7 +73,7 @@ export const userConfigController = async (req, res) => {
   try {
     const userDetails = await userDetailsQuery(userId);
     if (userDetails.length) {
-      return sendApiResponse(res, { config: userDetails[0] });
+      return sendApiResponse(res, { config: {...userDetails[0], brandingMessage: 'Made with Passion in Tirupati, Andhra Pradesh 🇮🇳'} });
     }
     return sendApiError(
       res,
