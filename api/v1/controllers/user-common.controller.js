@@ -4,7 +4,9 @@ import {
   countUserNotifications,
   countUserUnreadNotifications,
   fetchUserNotificationsPaginated,
+  getUserRoadmapQuery,
   markUserNotificationsAsSeen,
+  setUserRoadmapQuery,
   userDetailsQuery,
 } from "../services/user-common.query.js";
 
@@ -73,7 +75,12 @@ export const userConfigController = async (req, res) => {
   try {
     const userDetails = await userDetailsQuery(userId);
     if (userDetails.length) {
-      return sendApiResponse(res, { config: {...userDetails[0], brandingMessage: 'Made with Passion in Tirupati, Andhra Pradesh 🇮🇳'} });
+      return sendApiResponse(res, {
+        config: {
+          ...userDetails[0],
+          brandingMessage: "Made with Passion in Tirupati, Andhra Pradesh 🇮🇳",
+        },
+      });
     }
     return sendApiError(
       res,
@@ -82,6 +89,54 @@ export const userConfigController = async (req, res) => {
     );
   } catch (error) {
     logger.error(error, `error being received: [userConfigController]`);
+    return sendApiError(
+      res,
+      {
+        notifyUser: "Something went wrong. Please try again!",
+      },
+      500
+    );
+  }
+};
+
+export const setUserRoadmap = async (req, res) => {
+  const userId = req.user.userId;
+  const { roadmapId } = req.body;
+
+  if (!roadmapId) {
+    return sendApiError(res, { notifyUser: "Roadmap ID is required" }, 400);
+  }
+
+  try {
+    const result = await setUserRoadmapQuery(userId, roadmapId);
+    if (result.affectedRows > 0) {
+      return sendApiResponse(res, { message: "Roadmap updated successfully" });
+    } else {
+      return sendApiError(res, { notifyUser: "Failed to update roadmap" }, 500);
+    }
+  } catch (error) {
+    logger.error(error, "[setUserRoadmap]");
+    return sendApiError(
+      res,
+      { notifyUser: "Something went wrong. Please try again!" },
+      500
+    );
+  }
+};
+
+export const fetchUserSelectedRoadmaps = async (req, res) => {
+  const userId = req.user.userId;
+
+  try {
+    const userRoadmapResult = await getUserRoadmapQuery(userId);
+    if (userRoadmapResult.length) {
+      return sendApiResponse(res, {
+        selectedRoadmaps: userRoadmapResult || [],
+      });
+    }
+    return sendApiResponse(res, { selectedRoadmaps: [] }, 200);
+  } catch (error) {
+    logger.error(error, `error being received: [fetchUserSelectedRoadmaps]`);
     return sendApiError(
       res,
       {

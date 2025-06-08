@@ -121,3 +121,37 @@ export const userDetailsQuery = async (userId) => {
     throw error;
   }
 };
+
+export const setUserRoadmapQuery = async (userId, roadmapId) => {
+  logger.debug(userId, `data being received: [setUserRoadmapQuery]`);
+
+  const queryString = `
+    INSERT INTO user_enrolled_roadmaps (user_id, roadmap_id)
+    VALUES (?, ?)
+  `;
+
+  try {
+    return await query(queryString, [roadmapId, userId]);
+  } catch (error) {
+    logger.error(error, `error being received: [setUserRoadmapQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserRoadmapQuery = async (userId) => {
+  logger.debug(userId, `data being received: [getUserRoadmapQuery]`);
+
+  const queryString = `
+    SELECT roadmap_id as id
+    FROM user_enrolled_roadmaps
+    WHERE user_id = ?
+  `;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserRoadmapQuery/error]`);
+    throw error;
+  }
+};
