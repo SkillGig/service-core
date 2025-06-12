@@ -108,7 +108,9 @@ export const userDetailsQuery = async (userId) => {
        oec.show_user_roadmap AS showUserRoadmap,
        oec.show_leaderboard AS showLeaderBoard,
        oec.user_streaks  AS showUserStreaks,
-       oec.show_quizzes AS showQuizzes
+       oec.show_quizzes AS showQuizzes,
+       oec.branding_title AS brandingTitle,
+       oec.branding_message AS brandingMessage
     FROM users u
             INNER JOIN organizations o ON u.org_id = o.id
             INNER JOIN org_extra_configs oec ON o.id = oec.org_id

@@ -78,7 +78,6 @@ export const userConfigController = async (req, res) => {
       return sendApiResponse(res, {
         config: {
           ...userDetails[0],
-          brandingMessage: "Made with Passion in Tirupati, Andhra Pradesh 🇮🇳",
         },
       });
     }
