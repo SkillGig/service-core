@@ -4,8 +4,10 @@ import {
   fetchUserSelectedRoadmaps,
   getAllUserNotifications,
   markNotificationsAsSeen,
-  setUserRoadmap,
+  enrollUserToRoadmap,
   userConfigController,
+  getRoadmapDetails,
+  getCourseDetails,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 
@@ -15,7 +17,23 @@ router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
 
 router.use("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.post("/set-roadmap", authenticateUserTokenMiddleware, setUserRoadmap);
+router.post(
+  "/enroll-roadmap",
+  authenticateUserTokenMiddleware,
+  enrollUserToRoadmap
+);
+
+router.get(
+  "/roadmap-details",
+  authenticateUserTokenMiddleware,
+  getRoadmapDetails
+);
+
+router.get(
+  "/course-details",
+  authenticateUserTokenMiddleware,
+  getCourseDetails
+);
 
 router.get(
   "/roadmaps",
