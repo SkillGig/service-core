@@ -205,7 +205,7 @@ export const getCourseDetails = async (req, res) => {
     // Assuming a function exists to fetch course details by ID
     const courseDetails = await getCourseDetailsQuery(courseId);
     if (courseDetails) {
-      const tutorDetails = await getTutorDetailsQuery(courseId);
+      const tutorDetails = await getTutorDetailsQuery(courseDetails.tutorId);
       const tags = await getCourseTagsQuery(courseId);
       const learnings = await getCourseLearningsQuery(courseId);
       const reviews = await getCourseReviewsQuery(courseId);

@@ -224,8 +224,7 @@ export const getCourseDetailsQuery = async (courseId) => {
   logger.debug(courseId, `data being received: [getCourseDetailsQuery]`);
 
   const queryString = `
-    SELECT id AS courseId, title AS courseTitle, description AS courseDescription, thumbnail_url AS imageUrl
-    FROM courses WHERE id = ?;`;
+    SELECT id AS courseId, title AS courseTitle, description AS courseDescription, thumbnail_url AS imageUrl, tutor_id AS tutorId FROM courses WHERE id = ?;`;
   try {
     const result = await query(queryString, [courseId]);
     return result.length ? result[0] : null;
@@ -307,7 +306,7 @@ export const getCourseReviewsQuery = async (courseId) => {
 export const getCourseModulesQuery = async (courseId) => {
   logger.debug(courseId, `data being received: [getCourseModulesQuery]`);
 
-  const courseSummaryQueryString = `SELECT COUNT(DISTINCT s.module_week)                                 AS totalModules,
+  const courseSummaryQueryString = `SELECT COUNT(DISTINCT s.module_week) AS totalModules,
        COUNT(DISTINCT s.id)                                          AS totalSection,
        COUNT(DISTINCT ch.id)                                         AS totalChapters,
        SUM(CASE WHEN ch.content_type = 'video' THEN 1 ELSE 0 END)    AS totalVideos,
