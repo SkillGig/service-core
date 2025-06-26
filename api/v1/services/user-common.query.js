@@ -351,3 +351,306 @@ export const getCourseModulesQuery = async (courseId) => {
     throw error;
   }
 };
+
+export const getAllRoadmapsEnrolledByUserQuery = async (userId) => {
+  logger.debug(
+    userId,
+    `data being received: [getAllRoadmapsEnrolledByUserQuery]`
+  );
+
+  const queryString = `
+    SELECT r.id AS roadmapId, r.roadmap_name AS roadmapName, r.description AS roadmapDescription,
+           r.thumbnail_url AS roadmapThumbnail, r.level AS roadmapLevel
+    FROM user_enrolled_roadmaps uer
+    INNER JOIN roadmaps r ON uer.roadmap_id = r.id
+    WHERE uer.user_id = ? AND r.is_active = 1;`;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getAllRoadmapsEnrolledByUserQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const checkUserOrgMultipleRoadmapsEnrollmentQuery = async (userId) => {
+  logger.debug(
+    userId,
+    `data being received: [checkUserOrgMultipleRoadmapsEnrollmentQuery]`
+  );
+
+  const queryString = `
+    SELECT oec.allow_multiple_roadmaps AS allowMultipleRoadmaps
+    FROM users u
+    INNER JOIN organizations o ON u.org_id = o.id
+    INNER JOIN org_extra_configs oec ON o.id = oec.org_id
+    WHERE u.id = ?;`;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result.length ? result[0].allowMultipleRoadmaps : false;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [checkUserOrgMultipleRoadmapsEnrollmentQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const getAllCoursesMappedUnderRoadmapQuery = async (roadmapId) => {
+  logger.debug(
+    roadmapId,
+    `data being received: [getAllCoursesMappedUnderRoadmapQuery]`
+  );
+
+  const queryString = `
+    SELECT rcm.id AS roadmapCourseId,
+            rcm.roadmap_id AS roadmapId,
+            rcm.course_id AS courseId,
+            rcm.is_mandatory_to_proceed AS isMandatory,
+            rcm.weekly_unlock AS weeklyUnlock,
+            rcm.order AS courseOrder,
+            rcm.prerequisite_course_id AS preRequisite
+    FROM roadmap_courses_mapping rcm
+    INNER JOIN courses c ON rcm.course_id = c.id
+    INNER JOIN tutors t ON c.tutor_id = t.id
+    WHERE rcm.roadmap_id = ? AND rcm.is_active = 1 AND c.is_active = 1 ORDER By rcm.order;`;
+
+  try {
+    const result = await query(queryString, [roadmapId]);
+    return result;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getAllCoursesMappedUnderRoadmapQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const checkIfCourseIsAlreadyEnrolledToCourseQuery = async (
+  userId,
+  roadmapCourseId
+) => {
+  logger.debug(
+    userId,
+    `data being received: [checkIfCourseIsAlreadyEnrolledToCourseQuery]`
+  );
+
+  const queryString = `
+    SELECT COUNT(*) AS enrolledCount
+    FROM user_enrolled_courses uec
+    WHERE uec.user_id = ? AND uec.roadmap_course_id = ? AND uec.is_active = 1;`;
+
+  try {
+    const [result] = await query(queryString, [userId, roadmapCourseId]);
+    return result.enrolledCount > 0;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [checkIfCourseIsAlreadyEnrolledToCourseQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const enrollUserToCourseUsingRoadmapCourseIdQuery = async (
+  userId,
+  roadmapCourseId
+) => {
+  logger.debug(userId, `data being received: [enrollUserToCourseQuery]`);
+
+  const queryString = `
+    INSERT INTO user_enrolled_courses (user_id, roadmap_course_id)
+    VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE is_active = 1, updated_at = NOW();`;
+
+  try {
+    return await query(queryString, [userId, roadmapCourseId]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [enrollUserToCourseQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const insertUserCourseProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  totalSections
+) => {
+  logger.debug(userId, `data being received: [insertUserCourseProgressQuery]`);
+
+  const queryString = `
+    INSERT INTO user_course_progress (user_id, roadmap_course_id, course_id, total_sections, completed_sections, progress_percentage)
+    VALUES (?, ?, ?, ?, 0, 0)
+    ON DUPLICATE KEY UPDATE total_sections = ?, updated_at = NOW();`;
+
+  try {
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      totalSections,
+      totalSections,
+    ]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [insertUserCourseProgressQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const getAllSectionsUnderCourseQuery = async (courseId) => {
+  logger.debug(
+    courseId,
+    `data being received: [getAllSectionsUnderCourseQuery]`
+  );
+
+  const queryString = `
+    SELECT id AS sectionId, title AS sectionTitle, description AS sectionDescription, display_order AS sectionOrder, module_week AS moduleWeek
+    FROM sections WHERE course_id = ? AND is_active = 1 ORDER BY display_order;`;
+
+  try {
+    return await query(queryString, [courseId]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getAllSectionsUnderCourseQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const getAllChaptersUnderSectionQuery = async (sectionId) => {
+  logger.debug(
+    sectionId,
+    `data being received: [getAllChaptersUnderSectionQuery]`
+  );
+
+  const queryString = `
+    SELECT id AS chapterId, title AS chapterTitle, content_type AS contentType, content_duration AS chapterDuration, display_order AS chapterOrder
+    FROM chapters WHERE section_id = ? AND is_active = 1 ORDER BY display_order;`;
+
+  try {
+    return await query(queryString, [sectionId]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getAllChaptersUnderSectionQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const insertIntoUserSectionProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  sectionId,
+  isUnlocked,
+  totalChapters
+) => {
+  logger.debug(
+    userId,
+    `data being received: [insertIntoUserSectionProgressQuery
+]`
+  );
+  const queryString = `
+    INSERT INTO user_section_progress (user_id, roadmap_course_id, course_id, section_id, total_chapters, is_unlocked, is_completed)
+    VALUES (?, ?, ?, ?, ?, ?, 0)
+    ON DUPLICATE KEY UPDATE is_unlocked = ?, updated_at = NOW();`;
+  try {
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      sectionId,
+      totalChapters,
+      isUnlocked,
+      isUnlocked,
+    ]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [insertIntoUserSectionProgressQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const insertIntoUserChapterProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  sectionId,
+  chapterId,
+  isUnlocked,
+  totalDuration
+) => {
+  logger.debug(
+    userId,
+    `data being received: [insertIntoUserChapterProgressQuery]`
+  );
+  const queryString = `
+    INSERT INTO user_section_chapter_progress (user_id, roadmap_course_id, course_id, section_id, chapter_id, total_duration, is_unlocked, is_completed)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+    ON DUPLICATE KEY UPDATE is_unlocked = ?, updated_at = NOW();`;
+  try {
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      sectionId,
+      chapterId,
+      totalDuration,
+      isUnlocked,
+    ]);
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [insertIntoUserChapterProgressQuery/error]`
+    );
+    throw error;
+  }
+};
+
+// export const getAllSectionsUnderModuleQuery = async (moduleWeek, courseId) => {
+//   logger.debug(moduleWeek, courseId, `data being received: [getAllSectionUnderModuleQuery]`);
+
+//   const queryString = `
+//     SELECT id AS sectionId, title AS sectionTitle, description AS sectionDescription, display_order AS sectionOrder
+//     FROM sections WHERE module_week = ? AND course_id = ? AND is_active = 1 ORDER BY display_order;`;
+
+//   try {
+//     return await query(queryString, [moduleWeek, courseId]);
+//   } catch (error) {
+//     logger.error(error, `error being received: [getAllSectionUnderModuleQuery/error]`);
+//     throw error;
+//   }
+// }
+
+// export const getAllChaptersUnderSectionQuery = async (sectionId) => {
+//   logger.debug(sectionId, `data being received: [getAllChaptersUnderSectionQuery]`);
+
+//   const queryString = `
+//     SELECT id AS chapterId, title AS chapterTitle, content_type AS contentType, content_duration AS chapterDuration, display_order AS chapterOrder
+//     FROM chapters WHERE section_id = ? AND is_active = 1 ORDER BY display_order;`;
+
+//   try {
+//     return await query(queryString, [sectionId]);
+//   } catch (error) {
+//     logger.error(error, `error being received: [getAllChaptersUnderSectionQuery/error]`);
+//     throw error;
+//   }
+// }
