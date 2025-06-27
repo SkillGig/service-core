@@ -15,7 +15,7 @@ const router = Router();
 
 router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
 
-router.use("/config", authenticateUserTokenMiddleware, userConfigController);
+router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
 router.post(
   "/enroll-roadmap",

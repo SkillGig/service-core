@@ -1,36 +1,30 @@
 import Bluebird from "bluebird";
 import logger from "../../../config/logger.js";
-import { query } from "../../../config/db.js";
 import {
   checkIfCourseIsAlreadyEnrolledToCourseQuery,
-  enrollUserToCourseUsingRoadmapCourseIdQuery,
   getAllSectionsUnderCourseQuery,
   getAllChaptersUnderSectionQuery,
   insertIntoUserChapterProgressQuery,
   insertIntoUserSectionProgressQuery,
   insertUserCourseProgressQuery,
+  getQuizDetailsQuery,
+  getProjectDetailsQuery,
 } from "../services/user-common.query.js";
 
 const Promise = Bluebird;
 
-/**
- * Enrolls a user to the first course in a roadmap
- * Creates course progress tracking and unlocks appropriate modules based on course settings
- *
- * @param {Array} allCoursesUnderRoadmap - Array of courses in the roadmap
- * @param {number} userId - The ID of the user to enroll
- * @returns {Object} Result object with success status and message
- * @throws {Error} If enrollment fails at any step
- */
 export const enrollUserToTheFirstCourseInRoadmap = async (
   allCoursesUnderRoadmap,
-  userId
+  userId,
+  userRoadmapId,
+  conn
 ) => {
   try {
     // Validate input parameters
     if (
       !Array.isArray(allCoursesUnderRoadmap) ||
-      allCoursesUnderRoadmap.length === 0
+      allCoursesUnderRoadmap.length === 0 ||
+      !userRoadmapId
     ) {
       throw new Error("No courses available in the roadmap to enroll.");
     }
@@ -50,11 +44,11 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
     );
 
     // Check if the user is already enrolled in the first course
-    const isUserAlreadyEnrolled =
-      await checkIfCourseIsAlreadyEnrolledToCourseQuery(
-        userId,
-        firstCourse.roadmapCourseId
-      );
+    const isUserAlreadyEnrolled = await checkIfCourseIsAlreadyEnrolledToCourseQuery(
+      userId,
+      firstCourse.roadmapCourseId,
+      conn
+    );
 
     if (isUserAlreadyEnrolled) {
       logger.info(
@@ -67,68 +61,50 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
       };
     }
 
-    // Start database transaction for atomic enrollment
-    await query("START TRANSACTION");
+    // Step 1: Get all sections under the course
+    const totalSectionsUnderCourse = await getAllSectionsUnderCourseQuery(
+      firstCourse.courseId,
+      conn
+    );
 
-    try {
-      // Step 1: Enroll user to the course
-      const enrollResult = await enrollUserToCourseUsingRoadmapCourseIdQuery(
-        userId,
-        firstCourse.roadmapCourseId
-      );
-
-      if (enrollResult.affectedRows === 0) {
-        throw new Error(
-          "Failed to enroll user in the first course of the roadmap."
-        );
-      }
-
-      // Step 2: Get all sections under the course
-      const totalSectionsUnderCourse = await getAllSectionsUnderCourseQuery(
-        firstCourse.courseId
-      );
-
-      if (totalSectionsUnderCourse.length === 0) {
-        throw new Error(
-          "No sections found under the first course of the roadmap."
-        );
-      }
-
-      // Step 3: Create course progress record
-      await insertUserCourseProgressQuery(
-        userId,
-        firstCourse.courseId,
-        firstCourse.roadmapCourseId,
-        totalSectionsUnderCourse.length
-      );
-
-      // Step 4: Unlock appropriate modules based on course settings
-      await unlockAllModulesOfCourseToUser(
-        firstCourse.courseId,
-        firstCourse.roadmapCourseId,
-        userId,
-        firstCourse.isWeeklyUnlock,
-        totalSectionsUnderCourse
-      );
-
-      // Commit transaction if all steps succeed
-      await query("COMMIT");
-
-      logger.info(
-        { userId, courseId: firstCourse.courseId },
-        "Successfully enrolled user to first course in roadmap"
-      );
-
-      return {
-        success: true,
-        message:
-          "User successfully enrolled in the first course of the roadmap.",
-      };
-    } catch (transactionError) {
-      // Rollback transaction on any error
-      await query("ROLLBACK");
-      throw transactionError;
+    if (totalSectionsUnderCourse.length === 0) {
+      throw new Error("No sections found under the first course of the roadmap.");
     }
+
+    // Step 2: Create course progress record
+    const courseResult = await insertUserCourseProgressQuery(
+      userId,
+      firstCourse.roadmapCourseId,
+      firstCourse.courseId,
+      totalSectionsUnderCourse.length,
+      userRoadmapId,
+      conn
+    );
+
+    if (courseResult.affectedRows === 0) {
+      throw new Error("Failed to create course progress record for the user.");
+    }
+
+    // Step 3: Unlock appropriate modules based on course settings
+    await unlockAllModulesOfCourseToUser(
+      firstCourse.courseId,
+      firstCourse.roadmapCourseId,
+      userId,
+      firstCourse.isWeeklyUnlock,
+      totalSectionsUnderCourse,
+      courseResult.insertId,
+      conn
+    );
+
+    logger.info(
+      { userId, courseId: firstCourse.courseId },
+      "Successfully enrolled user to first course in roadmap"
+    );
+
+    return {
+      success: true,
+      message: "User successfully enrolled in the first course of the roadmap.",
+    };
   } catch (error) {
     logger.error(
       {
@@ -142,37 +118,26 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
   }
 };
 
-/**
- * Unlocks modules and sections for a user based on course unlock settings
- * Handles both weekly unlock and immediate unlock scenarios
- *
- * @param {number} courseId - The ID of the course
- * @param {number} roadmapCourseId - The roadmap course relationship ID
- * @param {number} userId - The ID of the user
- * @param {boolean} isWeeklyUnlock - Whether the course has weekly unlock mechanism
- * @param {Array} allSectionsUnderCourse - Array of sections in the course
- * @returns {Object} Result object with success status and message
- */
 export const unlockAllModulesOfCourseToUser = async (
   courseId,
   roadmapCourseId,
   userId,
   isWeeklyUnlock,
-  allSectionsUnderCourse
+  allSectionsUnderCourse,
+  userCourseProgressId,
+  conn
 ) => {
   try {
-    // Validate input parameters
     if (!courseId || !roadmapCourseId || !userId) {
-      throw new Error(
-        "Course ID, roadmap course ID, and user ID are required."
-      );
+      throw new Error("Course ID, roadmap course ID, and user ID are required.");
     }
 
-    if (
-      !Array.isArray(allSectionsUnderCourse) ||
-      allSectionsUnderCourse.length === 0
-    ) {
+    if (!Array.isArray(allSectionsUnderCourse) || allSectionsUnderCourse.length === 0) {
       throw new Error("No sections provided for module unlocking.");
+    }
+
+    if (!userCourseProgressId || typeof userCourseProgressId !== "number") {
+      throw new Error("Valid user course progress ID is required.");
     }
 
     logger.debug(
@@ -181,48 +146,39 @@ export const unlockAllModulesOfCourseToUser = async (
         roadmapCourseId,
         userId,
         isWeeklyUnlock,
+        userCourseProgressId,
         sectionsCount: allSectionsUnderCourse.length,
       },
       "Starting module unlock process"
     );
 
-    // Start transaction for atomic section and chapter unlocking
-    await query("START TRANSACTION");
+    // Process each section with controlled concurrency
+    await Promise.map(
+      allSectionsUnderCourse,
+      async (section, sectionIndex) => {
+        await processSectionUnlock(
+          section,
+          sectionIndex,
+          courseId,
+          roadmapCourseId,
+          userId,
+          isWeeklyUnlock,
+          userCourseProgressId,
+          conn
+        );
+      },
+      { concurrency: 5 } // Limit concurrent operations to prevent database overload
+    );
 
-    try {
-      // Process each section with controlled concurrency
-      await Promise.map(
-        allSectionsUnderCourse,
-        async (section, sectionIndex) => {
-          await processSectionUnlock(
-            section,
-            sectionIndex,
-            courseId,
-            roadmapCourseId,
-            userId,
-            isWeeklyUnlock
-          );
-        },
-        { concurrency: 5 } // Limit concurrent operations to prevent database overload
-      );
+    logger.info(
+      { courseId, userId, sectionsProcessed: allSectionsUnderCourse.length },
+      "Successfully unlocked all modules for user"
+    );
 
-      // Commit transaction if all sections processed successfully
-      await query("COMMIT");
-
-      logger.info(
-        { courseId, userId, sectionsProcessed: allSectionsUnderCourse.length },
-        "Successfully unlocked all modules for user"
-      );
-
-      return {
-        success: true,
-        message: "All modules of the course have been unlocked for the user.",
-      };
-    } catch (transactionError) {
-      // Rollback transaction on any error
-      await query("ROLLBACK");
-      throw transactionError;
-    }
+    return {
+      success: true,
+      message: "All modules of the course have been unlocked for the user.",
+    };
   } catch (error) {
     logger.error(
       {
@@ -241,47 +197,62 @@ export const unlockAllModulesOfCourseToUser = async (
   }
 };
 
-/**
- * Processes the unlocking of a single section and its chapters
- * Handles chapter progress creation and section unlock logic
- *
- * @param {Object} section - The section object to process
- * @param {number} sectionIndex - The index of the section in the course
- * @param {number} courseId - The ID of the course
- * @param {number} roadmapCourseId - The roadmap course relationship ID
- * @param {number} userId - The ID of the user
- * @param {boolean} isWeeklyUnlock - Whether the course has weekly unlock mechanism
- * @throws {Error} If section processing fails
- */
 const processSectionUnlock = async (
   section,
   sectionIndex,
   courseId,
   roadmapCourseId,
   userId,
-  isWeeklyUnlock
+  isWeeklyUnlock,
+  userCourseProgressId,
+  conn
 ) => {
   try {
     logger.debug(
-      { sectionId: section.sectionId, sectionIndex, courseId },
+      { sectionId: section.sectionId, sectionIndex, courseId, userCourseProgressId },
       "Processing section unlock"
     );
 
     // Get all chapters under the current section
-    const allChaptersUnderSection = await getAllChaptersUnderSectionQuery(
-      section.sectionId
-    );
+    const allChaptersUnderSection = await getAllChaptersUnderSectionQuery(section.sectionId, conn);
 
     if (allChaptersUnderSection.length === 0) {
-      throw new Error(
-        `No chapters found under section ${section.sectionId} of course ${courseId}`
-      );
+      throw new Error(`No chapters found under section ${section.sectionId} of course ${courseId}`);
     }
 
-    // Process each chapter in the section
-    await Promise.map(
-      allChaptersUnderSection,
-      async (chapter, chapterIndex) => {
+    // also fetch the quiz or project under the section if applicable and also add them as chapter but as a flag with isQuiz or isProject
+
+    const sectionProgressResult = await insertIntoUserSectionProgressQuery(
+      userId,
+      roadmapCourseId,
+      courseId,
+      section.sectionId,
+      sectionIndex === 0 ? 1 : 0, // Unlock first section by default
+      allChaptersUnderSection.length,
+      userCourseProgressId,
+      conn
+    );
+
+    logger.debug(
+      sectionProgressResult,
+      `Section progress result for section`
+    );
+
+    if (sectionProgressResult.affectedRows === 0) {
+      throw new Error(`Failed to unlock section ${section.sectionId} for user ${userId}`);
+    }
+
+    logger.debug(
+      { sectionId: section.sectionId, unlocked: sectionIndex === 0 },
+      "Section processed successfully"
+    );
+
+    await Promise.map(allChaptersUnderSection, async (chapter, chapterIndex) => {
+      if (chapter.contentType === "quiz") {
+        const quizDetails = await getQuizDetailsQuery(chapter.contentRefId, conn);
+        if (!quizDetails) {
+          return true; // Skip processing if quiz details are not found
+        }
         await processChapterProgress(
           chapter,
           chapterIndex,
@@ -289,39 +260,48 @@ const processSectionUnlock = async (
           userId,
           roadmapCourseId,
           courseId,
-          section.sectionId
+          section.sectionId,
+          quizDetails.quizMappingId,
+          null,
+          sectionProgressResult.insertId,
+          conn
         );
-      },
-      { concurrency: 5 }
-    );
+      } else if (chapter.contentType === "project") {
+        const projectDetails = await getProjectDetailsQuery(chapter.contentRefId, conn);
+        if (!projectDetails) {
+          return true; // Skip processing if quiz details are not found
+        }
+        await processChapterProgress(
+          chapter,
+          chapterIndex,
+          sectionIndex,
+          userId,
+          roadmapCourseId,
+          courseId,
+          section.sectionId,
+          null,
+          projectDetails.projectMappingId,
+          sectionProgressResult.insertId,
+          conn
+        );
+      } else {
+        await processChapterProgress(
+          chapter,
+          chapterIndex,
+          sectionIndex,
+          userId,
+          roadmapCourseId,
+          courseId,
+          section.sectionId,
+          null,
+          null,
+          sectionProgressResult.insertId,
+          conn
+        );
+      }
+    });
 
-    // Determine if section should be unlocked
-    const shouldUnlockSection = determineSectionUnlockStatus(
-      sectionIndex,
-      isWeeklyUnlock
-    );
-
-    // Create section progress record
-    const unlockResult = await insertIntoUserSectionProgressQuery(
-      userId,
-      roadmapCourseId,
-      courseId,
-      section.sectionId,
-      shouldUnlockSection,
-      allChaptersUnderSection.length,
-      0 // Initial completed chapters count
-    );
-
-    if (unlockResult.affectedRows === 0) {
-      throw new Error(
-        `Failed to unlock section ${section.sectionId} for user ${userId}`
-      );
-    }
-
-    logger.debug(
-      { sectionId: section.sectionId, unlocked: shouldUnlockSection },
-      "Section processed successfully"
-    );
+    return true;
   } catch (error) {
     logger.error(
       {
@@ -336,19 +316,6 @@ const processSectionUnlock = async (
   }
 };
 
-/**
- * Processes the progress tracking for a single chapter
- * Creates chapter progress record with appropriate unlock status
- *
- * @param {Object} chapter - The chapter object to process
- * @param {number} chapterIndex - The index of the chapter in the section
- * @param {number} sectionIndex - The index of the section in the course
- * @param {number} userId - The ID of the user
- * @param {number} roadmapCourseId - The roadmap course relationship ID
- * @param {number} courseId - The ID of the course
- * @param {number} sectionId - The ID of the section
- * @throws {Error} If chapter processing fails
- */
 const processChapterProgress = async (
   chapter,
   chapterIndex,
@@ -356,23 +323,31 @@ const processChapterProgress = async (
   userId,
   roadmapCourseId,
   courseId,
-  sectionId
+  sectionId,
+  quizMappingId,
+  projectMappingId,
+  sectionProgressId,
+  conn
 ) => {
   try {
     // First chapter of first section should be unlocked by default
-    const shouldUnlockChapter =
-      sectionIndex === 0 && chapterIndex === 0 ? 1 : 0;
+    logger.debug(chapterIndex, sectionIndex, courseId, "Processing chapter progress");
+    const shouldUnlockChapter = sectionIndex === 0 && chapterIndex === 0 ? 1 : 0;
 
-    const insertChapterProgressResult =
-      await insertIntoUserChapterProgressQuery(
-        userId,
-        roadmapCourseId,
-        courseId,
-        sectionId,
-        chapter.chapterId,
-        shouldUnlockChapter,
-        chapter.chapterDuration
-      );
+    const insertChapterProgressResult = await insertIntoUserChapterProgressQuery(
+      userId,
+      roadmapCourseId,
+      courseId,
+      sectionId,
+      chapter.chapterId,
+      shouldUnlockChapter,
+      chapter.chapterDuration,
+      chapter.contentType,
+      quizMappingId || null,
+      projectMappingId || null,
+      sectionProgressId,
+      conn
+    );
 
     if (insertChapterProgressResult.affectedRows === 0) {
       throw new Error(
@@ -385,9 +360,11 @@ const processChapterProgress = async (
         chapterId: chapter.chapterId,
         unlocked: shouldUnlockChapter,
         duration: chapter.chapterDuration,
+        sectionProgressId,
       },
       "Chapter progress created successfully"
     );
+    return true;
   } catch (error) {
     logger.error(
       {
@@ -401,21 +378,3 @@ const processChapterProgress = async (
     throw error;
   }
 };
-
-/**
- * Determines whether a section should be unlocked based on course settings
- *
- * @param {number} sectionIndex - The index of the section (0-based)
- * @param {boolean} isWeeklyUnlock - Whether the course has weekly unlock mechanism
- * @returns {number} 1 if section should be unlocked, 0 otherwise
- */
-const determineSectionUnlockStatus = (sectionIndex, isWeeklyUnlock) => {
-  if (!isWeeklyUnlock) {
-    // If not weekly unlock, unlock all sections immediately
-    return 1;
-  } else {
-    // If weekly unlock, only unlock the first section initially
-    return sectionIndex === 0 ? 1 : 0;
-  }
-};
-
