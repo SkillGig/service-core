@@ -509,6 +509,7 @@ export const insertIntoUserSectionProgressQuery = async (
   isUnlocked,
   totalChapters,
   userCourseProgressId,
+  moduleWeek,
   conn
 ) => {
   logger.debug(
@@ -517,7 +518,7 @@ export const insertIntoUserSectionProgressQuery = async (
 ]`
   );
   const queryString = `
-    INSERT INTO user_section_progress (user_id, roadmap_course_id, course_id, user_enrolled_course_progress_id , section_id, total_chapters, is_unlocked, is_completed)
+    INSERT INTO user_section_progress (user_id, roadmap_course_id, course_id, user_enrolled_course_progress_id , section_id, module_week, total_chapters, is_unlocked, is_completed)
     VALUES (?, ?, ?, ?, ?, ?, ?, 0)
     ON DUPLICATE KEY UPDATE is_unlocked = ?, updated_at = NOW();`;
   try {
@@ -528,6 +529,7 @@ export const insertIntoUserSectionProgressQuery = async (
         courseId,
         userCourseProgressId,
         sectionId,
+        moduleWeek,
         totalChapters,
         isUnlocked,
         isUnlocked, // Update is_unlocked on duplicate key
@@ -539,6 +541,7 @@ export const insertIntoUserSectionProgressQuery = async (
       courseId,
       userCourseProgressId,
       sectionId,
+      moduleWeek,
       totalChapters,
       isUnlocked,
       isUnlocked, // Update is_unlocked on duplicate key

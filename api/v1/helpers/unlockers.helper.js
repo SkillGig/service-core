@@ -230,6 +230,7 @@ const processSectionUnlock = async (
       sectionIndex === 0 ? 1 : 0, // Unlock first section by default
       allChaptersUnderSection.length,
       userCourseProgressId,
+      section.moduleWeek,
       conn
     );
 
