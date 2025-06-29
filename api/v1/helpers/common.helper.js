@@ -83,13 +83,10 @@ export const transformModuleData = (moduleData) => {
 
   moduleData.details.forEach((item) => {
     const moduleWeek = item.module_week;
-
     if (!moduleGroups[moduleWeek]) {
       moduleGroups[moduleWeek] = {};
     }
-
     const sectionId = item.sectionId;
-
     if (!moduleGroups[moduleWeek][sectionId]) {
       moduleGroups[moduleWeek][sectionId] = {
         sectionId: sectionId,
@@ -100,13 +97,33 @@ export const transformModuleData = (moduleData) => {
       };
     }
 
-    // Add chapter to section
-    moduleGroups[moduleWeek][sectionId].chapters.push({
+    // Build chapter object with quiz/project details if present
+    let chapter = {
       chapterId: item.chapterId,
       title: item.chapterTitle,
       type: item.contentType,
       duration: parseInt(item.chapterDuration) || 0,
-    });
+    };
+    if (item.contentType === "quiz") {
+      chapter = {
+        ...chapter,
+        quizId: item.quizId,
+        quizTitle: item.quizTitle,
+        quizDescription: item.quizDescription,
+        totalQuestions: item.totalQuestions,
+        quizDuration: item.quizDuration,
+      };
+    }
+    if (item.contentType === "project") {
+      chapter = {
+        ...chapter,
+        projectId: item.projectId,
+        projectTitle: item.projectTitle,
+        projectDescription: item.projectDescription,
+        projectDuration: item.projectDuration,
+      };
+    }
+    moduleGroups[moduleWeek][sectionId].chapters.push(chapter);
   });
 
   // Transform to final structure with calculations
@@ -117,8 +134,10 @@ export const transformModuleData = (moduleData) => {
         .sort((a, b) => a.order - b.order)
         .map((section) => {
           // Calculate section duration by summing all chapter durations in this section
-          const sectionDuration = section.chapters.reduce((total, chapter) => total + chapter.duration, 0);
-          
+          const sectionDuration = section.chapters.reduce(
+            (total, chapter) => total + chapter.duration,
+            0
+          );
           return {
             sectionId: section.sectionId,
             title: section.title,
@@ -129,30 +148,34 @@ export const transformModuleData = (moduleData) => {
         });
 
       // Calculate module-level statistics
-      const totalDurationOfModule = sections.reduce((total, section) => total + section.duration, 0);
+      const totalDurationOfModule = sections.reduce(
+        (total, section) => total + section.duration,
+        0
+      );
       const totalSectionsUnderModule = sections.length;
-      
       let totalVideosUnderModule = 0;
       let totalDocsUnderModule = 0;
       let totalQuizzesUnderModule = 0;
-      
-      sections.forEach(section => {
-        section.chapters.forEach(chapter => {
+      let totalProjectsUnderModule = 0;
+      sections.forEach((section) => {
+        section.chapters.forEach((chapter) => {
           switch (chapter.type) {
-            case 'video':
+            case "video":
               totalVideosUnderModule++;
               break;
-            case 'document':
-            case 'doc':
+            case "document":
+            case "doc":
               totalDocsUnderModule++;
               break;
-            case 'quiz':
+            case "quiz":
               totalQuizzesUnderModule++;
+              break;
+            case "project":
+              totalProjectsUnderModule++;
               break;
           }
         });
       });
-
       return {
         moduleWeek: parseInt(moduleWeek),
         totalDurationOfModule,
@@ -160,6 +183,7 @@ export const transformModuleData = (moduleData) => {
         totalVideosUnderModule,
         totalDocsUnderModule,
         totalQuizzesUnderModule,
+        totalProjectsUnderModule,
         sections,
       };
     });
