@@ -28,11 +28,7 @@ export const enrollUserToTheCourseInRoadmap = async (
 ) => {
   try {
     // Validate input parameters
-    if (
-      !Array.isArray(courseToEnroll) ||
-      courseToEnroll.length === 0 ||
-      !userRoadmapId
-    ) {
+    if (!Array.isArray(courseToEnroll) || courseToEnroll.length === 0 || !userRoadmapId) {
       throw new Error("No courses available in the roadmap to enroll.");
     }
 
@@ -398,6 +394,29 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
         conn.release();
         throw new Error("Module 1 is already unlocked for the user");
       }
+      // if the first module is not unlocked, then unlock it for the user
+      await queryWithConn(conn, "START TRANSACTION");
+      const unlockResult = await unlockSectionUnderCourse(
+        roadmapCourseId,
+        userId,
+        firstModule.sectionId,
+        conn
+      );
+      if (!unlockResult.success) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        throw new Error(unlockResult.message);
+      }
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      logger.info(
+        { userId, roadmapCourseId, moduleId },
+        `Module ${moduleId} unlocked successfully for user ${userId}`
+      );
+      return {
+        success: true,
+        message: `Module ${moduleId} unlocked successfully for user ${userId}`,
+      };
     } else {
       // check if the previous module sections are completed
       const previousModule = allModuleDetails.filter(
@@ -407,16 +426,28 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
       const isPreviousModuleCompleted = previousModule.every(
         (section) => section.isSectionCompleted === 1
       );
-      if (!isPreviousModuleCompleted) {
+
+      const roadmapCourseDetails = await getPrerequisiteCourseQuery(roadmapCourseId, conn);
+
+      const lastSectionOfPreviousModule = previousModule[previousModule.length - 1];
+      const lastSectionCompletedAt = new Date(lastSectionOfPreviousModule.sectionCompletedAt);
+      const currentDate = new Date();
+      const sevenDaysAgo = new Date(currentDate);
+      sevenDaysAgo.setDate(currentDate.getDate() - 7);
+      // if the last section of the previous module is not completed or completed less than 7 days ago, then throw an error
+      if (
+        !isPreviousModuleCompleted ||
+        (roadmapCourseDetails.isWeeklyUnlock && lastSectionCompletedAt > sevenDaysAgo)
+      ) {
         await queryWithConn(conn, "ROLLBACK");
         conn.release();
         throw new Error(
-          `Cannot unlock module ${moduleId} until all sections of module ${
+          `Cannot unlock module ${moduleId} until the last section of module ${
             moduleId - 1
-          } are completed.`
+          } is completed and more than 7 days have passed since its completion.`
         );
       }
-      // check if the module is already unlocked for the user
+
       const currentModule = allModuleDetails.filter((module) => module.moduleWeek === moduleId);
       // check if the first section of the current module is already unlocked
       logger.debug(currentModule, `data being received: [unlockModuleOfCourseToTheUser]`);

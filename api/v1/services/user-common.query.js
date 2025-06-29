@@ -647,7 +647,7 @@ export const getPrerequisiteCourseQuery = async (roadmapCourseId) => {
   logger.debug(roadmapCourseId, `data being received: [getPrerequisiteCourseQuery]`);
 
   const queryString = `
-    SELECT c.prerequisite_course_id AS prerequisiteCourseId, c.roadmap_id AS roadmapId
+    SELECT c.prerequisite_course_id AS prerequisiteCourseId, c.roadmap_id AS roadmapId, rcm.weekly_unlock AS isWeeklyUnlock
     FROM roadmap_courses_mapping rcm
     INNER JOIN courses c ON rcm.prerequisite_course_id = c.id
     WHERE rcm.id = ?;`;
@@ -669,7 +669,8 @@ export const getAllModuleDetailsQuery = async (roadmapCourseId, userId, conn) =>
        usp.user_enrolled_course_progress_id as userEnrolledCourseId,
        usp.module_week  as moduleWeek,
        usp.is_unlocked  as isSectionUnlocked,
-       usp.is_completed as isSectionCompleted
+       usp.is_completed as isSectionCompleted,
+       usp.completed_at as sectionCompletedAt,
   FROM user_course_progress ucp
           INNER JOIN user_section_progress usp ON ucp.id = usp.user_enrolled_course_progress_id
   WHERE ucp.roadmap_course_id = ? AND ucp.user_id = ? ORDER BY usp.section_id;`;
