@@ -9,12 +9,19 @@ import {
   insertUserCourseProgressQuery,
   getQuizDetailsQuery,
   getProjectDetailsQuery,
+  getPreviousSectionStatusQuery,
+  getAllChaptersUnderSectionForUserQuery,
+  markUnlockChapterToUserQuery,
+  getAllModuleDetailsQuery,
+  markUnlockSectionToUserQuery,
+  getPreviousChapterStatusQuery,
 } from "../services/user-common.query.js";
+import { getConnection, queryWithConn } from "../../../config/db.js";
 
 const Promise = Bluebird;
 
-export const enrollUserToTheFirstCourseInRoadmap = async (
-  allCoursesUnderRoadmap,
+export const enrollUserToTheCourseInRoadmap = async (
+  courseToEnroll,
   userId,
   userRoadmapId,
   conn
@@ -22,8 +29,8 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
   try {
     // Validate input parameters
     if (
-      !Array.isArray(allCoursesUnderRoadmap) ||
-      allCoursesUnderRoadmap.length === 0 ||
+      !Array.isArray(courseToEnroll) ||
+      courseToEnroll.length === 0 ||
       !userRoadmapId
     ) {
       throw new Error("No courses available in the roadmap to enroll.");
@@ -33,12 +40,11 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
       throw new Error("Valid user ID is required for enrollment.");
     }
 
-    const firstCourse = allCoursesUnderRoadmap[0];
     logger.debug(
       {
         userId,
-        courseId: firstCourse.courseId,
-        roadmapCourseId: firstCourse.roadmapCourseId,
+        courseId: courseToEnroll.courseId,
+        roadmapCourseId: courseToEnroll.roadmapCourseId,
       },
       "Starting enrollment process for first course in roadmap"
     );
@@ -46,13 +52,13 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
     // Check if the user is already enrolled in the first course
     const isUserAlreadyEnrolled = await checkIfCourseIsAlreadyEnrolledToCourseQuery(
       userId,
-      firstCourse.roadmapCourseId,
+      courseToEnroll.roadmapCourseId,
       conn
     );
 
     if (isUserAlreadyEnrolled) {
       logger.info(
-        { userId, roadmapCourseId: firstCourse.roadmapCourseId },
+        { userId, roadmapCourseId: courseToEnroll.roadmapCourseId },
         "User is already enrolled in the first course"
       );
       return {
@@ -63,7 +69,7 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
 
     // Step 1: Get all sections under the course
     const totalSectionsUnderCourse = await getAllSectionsUnderCourseQuery(
-      firstCourse.courseId,
+      courseToEnroll.courseId,
       conn
     );
 
@@ -74,8 +80,8 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
     // Step 2: Create course progress record
     const courseResult = await insertUserCourseProgressQuery(
       userId,
-      firstCourse.roadmapCourseId,
-      firstCourse.courseId,
+      courseToEnroll.roadmapCourseId,
+      courseToEnroll.courseId,
       totalSectionsUnderCourse.length,
       userRoadmapId,
       conn
@@ -87,17 +93,17 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
 
     // Step 3: Unlock appropriate modules based on course settings
     await unlockAllModulesOfCourseToUser(
-      firstCourse.courseId,
-      firstCourse.roadmapCourseId,
+      courseToEnroll.courseId,
+      courseToEnroll.roadmapCourseId,
       userId,
-      firstCourse.isWeeklyUnlock,
+      courseToEnroll.isWeeklyUnlock,
       totalSectionsUnderCourse,
       courseResult.insertId,
       conn
     );
 
     logger.info(
-      { userId, courseId: firstCourse.courseId },
+      { userId, courseId: courseToEnroll.courseId },
       "Successfully enrolled user to first course in roadmap"
     );
 
@@ -110,9 +116,9 @@ export const enrollUserToTheFirstCourseInRoadmap = async (
       {
         error: error.message,
         userId,
-        courseId: allCoursesUnderRoadmap?.[0]?.courseId,
+        courseId: courseToEnroll?.courseId,
       },
-      "[enrollUserToTheFirstCourseInRoadmap] Enrollment failed"
+      "[enrollUserToTheCourseInRoadmap] Enrollment failed"
     );
     throw error;
   }
@@ -203,7 +209,6 @@ const processSectionUnlock = async (
   courseId,
   roadmapCourseId,
   userId,
-  isWeeklyUnlock,
   userCourseProgressId,
   conn
 ) => {
@@ -234,10 +239,7 @@ const processSectionUnlock = async (
       conn
     );
 
-    logger.debug(
-      sectionProgressResult,
-      `Section progress result for section`
-    );
+    logger.debug(sectionProgressResult, `Section progress result for section`);
 
     if (sectionProgressResult.affectedRows === 0) {
       throw new Error(`Failed to unlock section ${section.sectionId} for user ${userId}`);
@@ -375,6 +377,245 @@ const processChapterProgress = async (
         courseId,
       },
       "[processChapterProgress] Chapter processing failed"
+    );
+    throw error;
+  }
+};
+
+export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, moduleId, conn) => {
+  if (!userId || !roadmapCourseId || !moduleId) {
+    throw new Error("userId and roadmapCourseId and moduleId are required.");
+  }
+
+  try {
+    // check if the module is already unlocked for the user
+    const allModuleDetails = await getAllModuleDetailsQuery(roadmapCourseId, userId, conn);
+    if (moduleId === 1) {
+      const firstModule = allModuleDetails.find((module) => module.moduleWeek === 1);
+      logger.debug(firstModule, `data being received: [functionName]`);
+      if (firstModule && firstModule.isSectionUnlocked) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        throw new Error("Module 1 is already unlocked for the user");
+      }
+    } else {
+      // check if the previous module sections are completed
+      const previousModule = allModuleDetails.filter(
+        (module) => module.moduleWeek === moduleId - 1
+      );
+      // for all the sections in the previous module, check if they are completed
+      const isPreviousModuleCompleted = previousModule.every(
+        (section) => section.isSectionCompleted === 1
+      );
+      if (!isPreviousModuleCompleted) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        throw new Error(
+          `Cannot unlock module ${moduleId} until all sections of module ${
+            moduleId - 1
+          } are completed.`
+        );
+      }
+      // check if the module is already unlocked for the user
+      const currentModule = allModuleDetails.filter((module) => module.moduleWeek === moduleId);
+      // check if the first section of the current module is already unlocked
+      logger.debug(currentModule, `data being received: [unlockModuleOfCourseToTheUser]`);
+      const isModuleUnlocked = currentModule[0]?.isSectionUnlocked === 1 ? true : false;
+      if (isModuleUnlocked) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        throw new Error("Module is already unlocked for the user");
+      }
+
+      await queryWithConn(conn, "START TRANSACTION");
+      // unlock the module for the user
+      const currentSectionUnderModule = currentModule[0];
+      const unlockResult = await unlockSectionUnderCourse(
+        roadmapCourseId,
+        userId,
+        currentSectionUnderModule.sectionId,
+        conn
+      );
+      if (!unlockResult.success) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        throw new Error(unlockResult.message);
+      }
+
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      logger.info(
+        { userId, roadmapCourseId, moduleId },
+        `Module ${moduleId} unlocked successfully for user ${userId}`
+      );
+      return {
+        success: true,
+        message: `Module ${moduleId} unlocked successfully for user ${userId}`,
+      };
+    }
+  } catch (error) {
+    if (conn) {
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+    }
+    logger.error(error, `error being received: [unlockModuleOfCourseToTheUser]`);
+    throw new Error(`Failed to unlock module ${moduleId} for user ${userId}: ${error.message}`);
+  }
+};
+
+export const unlockSectionUnderCourse = async (userId, roadmapCourseId, sectionId, conn) => {
+  try {
+    if (!roadmapCourseId || !userId || !sectionId) {
+      throw new Error("roadmapCourseId, userId, and sectionId are required.");
+    }
+
+    logger.debug({ roadmapCourseId, userId, sectionId }, "Starting section unlock process");
+
+    // check if the previous section is already unlocked
+    const previousSectionDetails = await getPreviousSectionStatusQuery(
+      userId,
+      roadmapCourseId,
+      sectionId,
+      conn
+    );
+
+    // if there are no previous sections, we can unlock the section directly
+    // check if all the previous sections are unlocked and completed
+    const allPreviousSectionsUnlocked =
+      previousSectionDetails.length === 0
+        ? true
+        : previousSectionDetails.every(
+            (section) => section.isUnlocked === 1 && section.isCompleted === 1
+          );
+    if (!allPreviousSectionsUnlocked) {
+      throw new Error("Cannot unlock this section until all previous sections are completed.");
+    }
+    logger.debug({ previousSectionDetails }, "Previous section status checked successfully");
+    // Proceed to unlock the section
+    const sectionUnlockResult = await markUnlockSectionToUserQuery(
+      userId,
+      roadmapCourseId,
+      sectionId,
+      1,
+      conn
+    );
+
+    if (sectionUnlockResult.affectedRows === 0) {
+      throw new Error(`Failed to unlock section ${sectionId} for user ${userId}`);
+    }
+
+    const getAllChaptersUnderSection = await getAllChaptersUnderSectionForUserQuery(
+      userId,
+      roadmapCourseId,
+      sectionId,
+      conn
+    );
+    if (getAllChaptersUnderSection.length === 0) {
+      throw new Error(`No chapters found under section ${sectionId} for user ${userId}`);
+    }
+    // mark the first chapter of the section as unlocked
+    const firstChapter = getAllChaptersUnderSection[0];
+    const firstChapterUnlockResult = await unlockChapterToUserUnderCourseQuery(
+      userId,
+      roadmapCourseId,
+      firstChapter.chapterId,
+      sectionId,
+      conn
+    );
+    if (!firstChapterUnlockResult.success) {
+      throw new Error(
+        `Failed to unlock first chapter ${firstChapter.chapterId} of section ${sectionId} for user ${userId}: ${firstChapterUnlockResult.message}`
+      );
+    }
+
+    logger.debug(
+      { sectionId, userId, roadmapCourseId, firstChapterId: firstChapter.chapterId },
+      "Section and first chapter unlocked successfully"
+    );
+
+    return {
+      success: true,
+      message: `Section ${sectionId} and first chapter ${firstChapter.chapterId} unlocked successfully for user ${userId}`,
+    };
+  } catch (error) {
+    logger.error(
+      {
+        error: error.message,
+        roadmapCourseId,
+        userId,
+        sectionId,
+      },
+      "[unlockSectionUnderCourse] Section unlocking failed"
+    );
+    throw error;
+  }
+};
+
+export const unlockChapterToUserUnderCourse = async (
+  userId,
+  roadmapCourseId,
+  sectionId,
+  chapterId,
+  conn
+) => {
+  try {
+    if (!userId || !roadmapCourseId || !chapterId || !sectionId) {
+      throw new Error("userId, roadmapCourseId, chapterId, and sectionId are required.");
+    }
+
+    logger.debug(
+      { userId, roadmapCourseId, chapterId, sectionId },
+      "Starting chapter unlock process"
+    );
+
+    const previousChapterDetails = await getPreviousChapterStatusQuery(
+      userId,
+      roadmapCourseId,
+      chapterId,
+      conn
+    );
+
+    const allPreviousChaptersUnlocked =
+      previousChapterDetails.length === 0
+        ? true
+        : previousChapterDetails.every(
+            (chapter) => chapter.isChapterUnlocked === 1 && chapter.isChapterCompleted === 1
+          );
+    if (!allPreviousChaptersUnlocked) {
+      throw new Error("Cannot unlock this chapter until all previous chapters are completed.");
+    }
+    logger.debug({ previousChapterDetails }, "Previous chapter status checked successfully");
+
+    // Proceed to unlock the chapter
+    const chapterUnlockResult = await markUnlockChapterToUserQuery(
+      userId,
+      roadmapCourseId,
+      sectionId,
+      chapterId,
+      1,
+      conn
+    );
+    if (chapterUnlockResult.affectedRows === 0) {
+      throw new Error(`Failed to unlock chapter ${chapterId} for user ${userId}`);
+    }
+    logger.debug(
+      { chapterId, userId, roadmapCourseId, sectionId },
+      "Chapter unlocked successfully"
+    );
+    return {
+      success: true,
+      message: `Chapter ${chapterId} unlocked successfully for user ${userId}`,
+    };
+  } catch (error) {
+    logger.error(
+      {
+        error: error.message,
+        userId,
+        roadmapCourseId,
+        chapterId,
+        sectionId,
+      },
+      "[unlockChapterToUserUnderCourse] Chapter unlocking failed"
     );
     throw error;
   }
