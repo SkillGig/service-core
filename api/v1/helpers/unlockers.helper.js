@@ -683,19 +683,10 @@ export const unlockChapterToUserUnderCourse = async ({
   }
 };
 
-// Calculates the difference in days between two date strings (YYYY-MM-DD or ISO format), ignoring time
 export function getDaysBetweenDates(date1, date2) {
   if (!date1 || !date2) return null;
-  // Only use the date part (YYYY-MM-DD)
   const d1 = new Date(date1.split("T")[0]);
   const d2 = new Date(date2.split("T")[0]);
-  // Get the difference in milliseconds
   const diffMs = d1.getTime() - d2.getTime();
-  // Convert ms to days
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
-
-setTimeout(async () => {
-  let conn = await getConnection();
-  unlockModuleOfCourseToTheUser({ userId: 29, roadmapCourseId: 12, moduleId: 2, conn });
-}, 2000);
