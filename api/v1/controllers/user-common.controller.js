@@ -23,13 +23,17 @@ import {
   getCourseModulesQuery,
   getCourseReviewsQuery,
   getCourseTagsQuery,
+  getCurrentRoadmapStatusQuery,
   getPrerequisiteCourseQuery,
+  getRoadmapCourseMappingDetailsUnderRoadmapQuery,
   getRoadmapDetailsQuery,
+  getTotalSectionsUnderRoadmapCourseQuery,
   getTutorDetailsQuery,
   getUserCourseCompletionStatusQuery,
   getUserRoadmapQuery,
   markUserNotificationsAsSeen,
   setUserRoadmapQuery,
+  userCurrentRoadmapCourseStatusQuery,
   userDetailsQuery,
 } from "../services/user-common.query.js";
 
@@ -136,6 +140,7 @@ export const enrollUserToRoadmap = async (req, res) => {
       const existingRoadmaps = await getAllRoadmapsEnrolledByUserQuery(userId, conn);
       const isAlreadyEnrolled = existingRoadmaps.some((roadmap) => roadmap.roadmapId === roadmapId);
       if (isAlreadyEnrolled) {
+        // instead of a flag have the number of roadmaps that user can enroll at a time in org level
         const allowsMultipleEnrollments = await checkUserOrgMultipleRoadmapsEnrollmentQuery(
           userId,
           conn
@@ -298,10 +303,11 @@ export const getRoadmapDetails = async (req, res) => {
 };
 
 export const getCourseDetails = async (req, res) => {
-  const { roadmapCourseId } = req.query;
+  const userId = req.user.userId;
+  const { roadmapCourseId, roadmapId } = req.query;
 
-  if (!roadmapCourseId) {
-    return sendApiError(res, { notifyUser: "Course ID is required" }, 400);
+  if (!roadmapCourseId || !roadmapId) {
+    return sendApiError(res, { notifyUser: "Roadmap Course ID and Roadmap Id is required" }, 400);
   }
 
   try {
@@ -321,6 +327,79 @@ export const getCourseDetails = async (req, res) => {
       // Transform the module data to the desired format
       const transformedModules = transformModuleData(moduleData);
 
+      const userStatusOfCourse = await userCurrentRoadmapCourseStatusQuery({
+        userId,
+        roadmapId,
+        roadmapCourseId,
+      });
+
+      let currentRoadmapStatus = null;
+      let currentRoadmapCourseStatus = null;
+      let preRequisiteCourseDetails = null;
+
+      if (!userStatusOfCourse) {
+        const roadmapDetails = await getCurrentRoadmapStatusQuery(userId, roadmapId);
+        if (roadmapDetails) {
+          currentRoadmapStatus = "in-progress";
+
+          const roadmapCourseMappingDetails = await getRoadmapCourseMappingDetailsUnderRoadmapQuery(
+            roadmapCourseId,
+            roadmapId
+          );
+          logger.debug(
+            { roadmapCourseMappingDetails, userId, roadmapId },
+            "Fetched roadmap course mapping details"
+          );
+          if (roadmapCourseMappingDetails) {
+            currentRoadmapCourseStatus = "locked";
+            const preRequisiteCourse = await userCurrentRoadmapCourseStatusQuery({
+              userId,
+              roadmapId: roadmapCourseMappingDetails.roadmapId,
+              courseId: roadmapCourseMappingDetails.preRequisiteCourseId,
+            });
+            if (preRequisiteCourse) {
+              currentRoadmapCourseStatus = preRequisiteCourse.isCompleted
+                ? "ready-to-enroll"
+                : "in-progress";
+              preRequisiteCourseDetails = {
+                roadmapId: roadmapCourseMappingDetails.roadmapId,
+                roadmapCourseId: roadmapCourseMappingDetails.preRequisiteCourseId,
+                isEnrolled: true,
+                completedSections: preRequisiteCourse.completedSections || 0,
+                progressPercent: preRequisiteCourse.progressPercent || 0,
+                totalSections: preRequisiteCourse.totalSections || 0,
+                courseTitle: preRequisiteCourse.courseTitle || "",
+                courseDescription: preRequisiteCourse.courseDescription || "",
+                courseThumbnailUrl: preRequisiteCourse.courseThumbnailUrl || "",
+              };
+            } else {
+              currentRoadmapCourseStatus = "locked";
+              const preRequisiteCourse = await getTotalSectionsUnderRoadmapCourseQuery(
+                roadmapCourseMappingDetails.preRequisiteCourseId
+              );
+              preRequisiteCourseDetails = {
+                roadmapId: roadmapCourseMappingDetails.roadmapId,
+                roadmapCourseId: roadmapCourseMappingDetails.preRequisiteCourseId,
+                isEnrolled: false,
+                totalSection: preRequisiteCourse.totalSections || 0,
+                courseTitle: preRequisiteCourse.courseTitle || "",
+                courseDescription: preRequisiteCourse.courseDescription || "",
+                courseThumbnailUrl: preRequisiteCourse.courseThumbnailUrl || "",
+              };
+            }
+          }
+        } else {
+          currentRoadmapStatus = "not-enrolled";
+          currentRoadmapCourseStatus = "not-enrolled";
+          preRequisiteCourseDetails = null;
+        }
+      }
+
+      if (userStatusOfCourse) {
+        currentRoadmapStatus = "in-progress";
+        currentRoadmapCourseStatus = userStatusOfCourse.isCompleted ? "completed" : "in-progress";
+      }
+
       return sendApiResponse(res, {
         courseDetails,
         tutorDetails,
@@ -328,6 +407,9 @@ export const getCourseDetails = async (req, res) => {
         learnings,
         reviews,
         ...transformedModules,
+        currentRoadmapStatus,
+        currentRoadmapCourseStatus,
+        preRequisiteCourseDetails,
       });
     } else {
       return sendApiError(res, { notifyUser: "Course not found" }, 404);
