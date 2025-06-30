@@ -15,6 +15,8 @@ import {
   getAllModuleDetailsQuery,
   markUnlockSectionToUserQuery,
   getPreviousChapterStatusQuery,
+  getPrerequisiteCourseQuery,
+  getCourseMappingDetailsQuery,
 } from "../services/user-common.query.js";
 import { getConnection, queryWithConn } from "../../../config/db.js";
 
@@ -378,7 +380,12 @@ const processChapterProgress = async (
   }
 };
 
-export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, moduleId, conn) => {
+export const unlockModuleOfCourseToTheUser = async ({
+  userId,
+  roadmapCourseId,
+  moduleId,
+  conn,
+}) => {
   if (!userId || !roadmapCourseId || !moduleId) {
     throw new Error("userId and roadmapCourseId and moduleId are required.");
   }
@@ -396,12 +403,12 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
       }
       // if the first module is not unlocked, then unlock it for the user
       await queryWithConn(conn, "START TRANSACTION");
-      const unlockResult = await unlockSectionUnderCourse(
+      const unlockResult = await unlockSectionUnderCourse({
         roadmapCourseId,
         userId,
-        firstModule.sectionId,
-        conn
-      );
+        sectionId: firstModule.sectionId,
+        conn,
+      });
       if (!unlockResult.success) {
         await queryWithConn(conn, "ROLLBACK");
         conn.release();
@@ -427,17 +434,39 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
         (section) => section.isSectionCompleted === 1
       );
 
-      const roadmapCourseDetails = await getPrerequisiteCourseQuery(roadmapCourseId, conn);
+      const roadmapCourseDetails = await getCourseMappingDetailsQuery(roadmapCourseId);
 
+      const firstSectionOfPreviousModule = previousModule[0];
       const lastSectionOfPreviousModule = previousModule[previousModule.length - 1];
-      const lastSectionCompletedAt = new Date(lastSectionOfPreviousModule.sectionCompletedAt);
-      const currentDate = new Date();
-      const sevenDaysAgo = new Date(currentDate);
-      sevenDaysAgo.setDate(currentDate.getDate() - 7);
-      // if the last section of the previous module is not completed or completed less than 7 days ago, then throw an error
+      const lastSectionOfPreviousModuleCompletedAt = new Date(
+        lastSectionOfPreviousModule.sectionCompletedAt
+      );
+      const firstSectionOfPreviousModuleEnrolledAt = new Date(
+        firstSectionOfPreviousModule.sectionUnlockedAt
+      );
+
+      // draw the difference between lastSectionOfPreviousModuleCompletedAt and firstSectionOfPreviousModuleEnrolledAt
+      const numberOfDaysDifference = getDaysBetweenDates(
+        lastSectionOfPreviousModuleCompletedAt.toISOString(),
+        firstSectionOfPreviousModuleEnrolledAt.toISOString()
+      );
+
+      logger.debug(
+        {
+          lastSectionOfPreviousModule,
+          lastSectionOfPreviousModule,
+          lastSectionOfPreviousModuleCompletedAt,
+          firstSectionOfPreviousModuleEnrolledAt,
+          isPreviousModuleCompleted,
+          numberOfDaysDifference,
+          condition: roadmapCourseDetails.isWeeklyUnlock && numberOfDaysDifference < 7,
+        },
+        `data being received: [unlockModuleOfCourseToTheUser]`
+      );
+
       if (
         !isPreviousModuleCompleted ||
-        (roadmapCourseDetails.isWeeklyUnlock && lastSectionCompletedAt > sevenDaysAgo)
+        (roadmapCourseDetails.isWeeklyUnlock && numberOfDaysDifference < 7)
       ) {
         await queryWithConn(conn, "ROLLBACK");
         conn.release();
@@ -461,12 +490,12 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
       await queryWithConn(conn, "START TRANSACTION");
       // unlock the module for the user
       const currentSectionUnderModule = currentModule[0];
-      const unlockResult = await unlockSectionUnderCourse(
+      const unlockResult = await unlockSectionUnderCourse({
         roadmapCourseId,
         userId,
-        currentSectionUnderModule.sectionId,
-        conn
-      );
+        sectionId: currentSectionUnderModule.sectionId,
+        conn,
+      });
       if (!unlockResult.success) {
         await queryWithConn(conn, "ROLLBACK");
         conn.release();
@@ -494,7 +523,7 @@ export const unlockModuleOfCourseToTheUser = async (userId, roadmapCourseId, mod
   }
 };
 
-export const unlockSectionUnderCourse = async (userId, roadmapCourseId, sectionId, conn) => {
+export const unlockSectionUnderCourse = async ({ userId, roadmapCourseId, sectionId, conn }) => {
   try {
     if (!roadmapCourseId || !userId || !sectionId) {
       throw new Error("roadmapCourseId, userId, and sectionId are required.");
@@ -512,24 +541,26 @@ export const unlockSectionUnderCourse = async (userId, roadmapCourseId, sectionI
 
     // if there are no previous sections, we can unlock the section directly
     // check if all the previous sections are unlocked and completed
-    const allPreviousSectionsUnlocked =
+    const allPreviousSectionsUnlockedAndCompleted =
       previousSectionDetails.length === 0
         ? true
         : previousSectionDetails.every(
             (section) => section.isUnlocked === 1 && section.isCompleted === 1
           );
-    if (!allPreviousSectionsUnlocked) {
+    if (!allPreviousSectionsUnlockedAndCompleted) {
       throw new Error("Cannot unlock this section until all previous sections are completed.");
     }
     logger.debug({ previousSectionDetails }, "Previous section status checked successfully");
     // Proceed to unlock the section
-    const sectionUnlockResult = await markUnlockSectionToUserQuery(
+    const sectionUnlockResult = await markUnlockSectionToUserQuery({
       userId,
       roadmapCourseId,
       sectionId,
-      1,
-      conn
-    );
+      isUnlocked: 1,
+      conn,
+    });
+
+    logger.debug(sectionUnlockResult, `data being received: [sectionUnlockResult]`);
 
     if (sectionUnlockResult.affectedRows === 0) {
       throw new Error(`Failed to unlock section ${sectionId} for user ${userId}`);
@@ -546,13 +577,13 @@ export const unlockSectionUnderCourse = async (userId, roadmapCourseId, sectionI
     }
     // mark the first chapter of the section as unlocked
     const firstChapter = getAllChaptersUnderSection[0];
-    const firstChapterUnlockResult = await unlockChapterToUserUnderCourseQuery(
+    const firstChapterUnlockResult = await unlockChapterToUserUnderCourse({
       userId,
       roadmapCourseId,
-      firstChapter.chapterId,
+      chapterId: firstChapter.chapterId,
       sectionId,
-      conn
-    );
+      conn,
+    });
     if (!firstChapterUnlockResult.success) {
       throw new Error(
         `Failed to unlock first chapter ${firstChapter.chapterId} of section ${sectionId} for user ${userId}: ${firstChapterUnlockResult.message}`
@@ -582,13 +613,13 @@ export const unlockSectionUnderCourse = async (userId, roadmapCourseId, sectionI
   }
 };
 
-export const unlockChapterToUserUnderCourse = async (
+export const unlockChapterToUserUnderCourse = async ({
   userId,
   roadmapCourseId,
   sectionId,
   chapterId,
-  conn
-) => {
+  conn,
+}) => {
   try {
     if (!userId || !roadmapCourseId || !chapterId || !sectionId) {
       throw new Error("userId, roadmapCourseId, chapterId, and sectionId are required.");
@@ -618,14 +649,14 @@ export const unlockChapterToUserUnderCourse = async (
     logger.debug({ previousChapterDetails }, "Previous chapter status checked successfully");
 
     // Proceed to unlock the chapter
-    const chapterUnlockResult = await markUnlockChapterToUserQuery(
+    const chapterUnlockResult = await markUnlockChapterToUserQuery({
       userId,
       roadmapCourseId,
       sectionId,
       chapterId,
-      1,
-      conn
-    );
+      isUnlocked: 1,
+      conn,
+    });
     if (chapterUnlockResult.affectedRows === 0) {
       throw new Error(`Failed to unlock chapter ${chapterId} for user ${userId}`);
     }
@@ -651,3 +682,20 @@ export const unlockChapterToUserUnderCourse = async (
     throw error;
   }
 };
+
+// Calculates the difference in days between two date strings (YYYY-MM-DD or ISO format), ignoring time
+export function getDaysBetweenDates(date1, date2) {
+  if (!date1 || !date2) return null;
+  // Only use the date part (YYYY-MM-DD)
+  const d1 = new Date(date1.split("T")[0]);
+  const d2 = new Date(date2.split("T")[0]);
+  // Get the difference in milliseconds
+  const diffMs = d1.getTime() - d2.getTime();
+  // Convert ms to days
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+setTimeout(async () => {
+  let conn = await getConnection();
+  unlockModuleOfCourseToTheUser({ userId: 29, roadmapCourseId: 12, moduleId: 2, conn });
+}, 2000);

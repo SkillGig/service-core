@@ -647,9 +647,11 @@ export const getPrerequisiteCourseQuery = async (roadmapCourseId) => {
   logger.debug(roadmapCourseId, `data being received: [getPrerequisiteCourseQuery]`);
 
   const queryString = `
-    SELECT c.prerequisite_course_id AS prerequisiteCourseId, c.roadmap_id AS roadmapId, rcm.weekly_unlock AS isWeeklyUnlock
+    SELECT rcm.prerequisite_course_id AS prerequisiteCourseId,
+       rcm.roadmap_id             AS roadmapId,
+       rcm.weekly_unlock          AS isWeeklyUnlock
     FROM roadmap_courses_mapping rcm
-    INNER JOIN courses c ON rcm.prerequisite_course_id = c.id
+            INNER JOIN courses c ON rcm.prerequisite_course_id = c.id
     WHERE rcm.id = ?;`;
 
   try {
@@ -671,6 +673,7 @@ export const getAllModuleDetailsQuery = async (roadmapCourseId, userId, conn) =>
        usp.is_unlocked  as isSectionUnlocked,
        usp.is_completed as isSectionCompleted,
        usp.completed_at as sectionCompletedAt,
+       usp.unlocked_at  as sectionUnlockedAt
   FROM user_course_progress ucp
           INNER JOIN user_section_progress usp ON ucp.id = usp.user_enrolled_course_progress_id
   WHERE ucp.roadmap_course_id = ? AND ucp.user_id = ? ORDER BY usp.section_id;`;
@@ -694,7 +697,7 @@ export const getPreviousSectionStatusQuery = async (userId, roadmapCourseId, sec
     `data being received: [getPreviousSectionStatusQuery]`
   );
 
-  const queryString = `SELECT section_id AS sectionId, is_completed AS isCompleted, is_unlocked AS isUnlocked
+  const queryString = `SELECT section_id AS sectionId, is_completed AS isCompleted, is_unlocked AS isUnlocked, unlocked_at AS unlockedAt, completed_at AS completedAt
     FROM user_section_progress
     WHERE user_id = ?
     AND roadmap_course_id = ?
@@ -739,13 +742,13 @@ export const getAllChaptersUnderSectionForUserQuery = async (
   }
 };
 
-export const markUnlockSectionToUserQuery = async (
+export const markUnlockSectionToUserQuery = async ({
   userId,
   roadmapCourseId,
   sectionId,
   isUnlocked,
-  conn
-) => {
+  conn,
+}) => {
   logger.debug(
     userId,
     roadmapCourseId,
@@ -755,7 +758,7 @@ export const markUnlockSectionToUserQuery = async (
   );
   const queryString = `
     UPDATE user_section_progress
-    SET is_unlocked = ?, updated_at = NOW()
+    SET is_unlocked = ?, updated_at = NOW(), unlocked_at = NOW()
     WHERE user_id = ? AND roadmap_course_id = ? AND section_id = ?;`;
   try {
     if (conn) {
@@ -773,14 +776,14 @@ export const markUnlockSectionToUserQuery = async (
   }
 };
 
-export const markUnlockChapterToUserQuery = async (
+export const markUnlockChapterToUserQuery = async ({
   userId,
   roadmapCourseId,
   sectionId,
   chapterId,
   isUnlocked,
-  conn
-) => {
+  conn,
+}) => {
   logger.debug(
     userId,
     roadmapCourseId,
@@ -791,7 +794,7 @@ export const markUnlockChapterToUserQuery = async (
   );
   const queryString = `
     UPDATE user_chapter_progress
-    SET is_unlocked = ?, updated_at = NOW()
+    SET is_unlocked = ?, updated_at = NOW(), unlocked_at = NOW()
     WHERE user_id = ? AND roadmap_course_id = ? AND section_id = ? AND chapter_id = ?;`;
   try {
     if (conn) {
@@ -841,7 +844,7 @@ export const getCourseMappingDetailsQuery = async (roadmapCourseId, conn) => {
   const queryString = `
     SELECT rcm.id AS roadmapCourseId, rcm.roadmap_id AS roadmapId, rcm.course_id AS courseId,
            rcm.is_mandatory_to_proceed AS isMandatory, rcm.weekly_unlock AS isWeeklyUnlock,
-           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisite
+           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
     FROM roadmap_courses_mapping rcm
     WHERE rcm.id = ?;`;
 
@@ -883,4 +886,4 @@ export const getUserCourseCompletionStatusQuery = async (userId, roadmapId, cour
     logger.error(error, `error being received: [getUserCourseCompletionStatusQuery/error]`);
     throw error;
   }
-}
+};

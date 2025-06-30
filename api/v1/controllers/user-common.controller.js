@@ -459,12 +459,12 @@ export const unlockModuleUnderCourseController = async (req, res) => {
     conn = await getConnection();
     await queryWithConn(conn, "START TRANSACTION");
 
-    const unlockModuleResult = await unlockModuleOfCourseToTheUser(
+    const unlockModuleResult = await unlockModuleOfCourseToTheUser({
       userId,
       roadmapCourseId,
       moduleId,
-      conn
-    );
+      conn,
+    });
     if (unlockModuleResult.success) {
       await queryWithConn(conn, "COMMIT");
       conn.release();
@@ -541,7 +541,11 @@ export const unlockChapterUnderCourseController = async (req, res) => {
   const { roadmapCourseId, sectionId, chapterId } = req.body;
 
   if (!roadmapCourseId || !sectionId || !chapterId) {
-    return sendApiError(res, { notifyUser: "Invalid roadmapCourseId or sectionId or chapterId" }, 400);
+    return sendApiError(
+      res,
+      { notifyUser: "Invalid roadmapCourseId or sectionId or chapterId" },
+      400
+    );
   }
 
   let conn;
