@@ -2,6 +2,7 @@ import { getConnection, queryWithConn } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 import { sendApiError, sendApiResponse } from "../helpers/api.helper.js";
 import { transformRoadmapData, transformModuleData } from "../helpers/common.helper.js";
+import { sendModuleUnlockedNotification } from "../helpers/notification.helper.js";
 import {
   enrollUserToTheCourseInRoadmap,
   unlockChapterToUserUnderCourse,
@@ -196,22 +197,39 @@ export const enrollUserToRoadmap = async (req, res) => {
         throw new Error(`First course enrollment failed: ${firstCourseEnrollment.message}`);
       }
       await queryWithConn(conn, "COMMIT");
-      logger.info(
-        { userId, roadmapId, firstCourseId: allCoursesInRoadmap[0]?.courseId },
-        "Successfully enrolled user to roadmap and first course"
-      );
       conn.release();
+      // send notification for roadmap enrollment
+      
+      await sendModuleUnlockedNotification({
+        userId,
+        roadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
+        moduleWeek: null,
+        sectionId: null,
+        contentRefId: null,
+        title: "Roadmap Enrolled",
+        body: `You have successfully enrolled in the roadmap: ${allCoursesInRoadmap[0]?.roadmapName}`,
+        actionUrl: `/user/roadmaps/${enrollmentResult.insertId}`,
+        type: "roadmap-enrolled",
+        source: "system",
+      });
       return sendApiResponse(res, {
         message: "Roadmap enrolled successfully",
         data: {
           roadmapId,
-          enrolledCourseId: allCoursesInRoadmap[0]?.courseId,
-          totalCoursesInRoadmap: allCoursesInRoadmap.length,
+          enrolledRoadmapId: enrollmentResult.insertId,
+          enrolledRoadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
         },
       });
     } catch (transactionError) {
-      await queryWithConn(conn, "ROLLBACK");
-      conn.release();
+      try {
+        await queryWithConn(conn, "ROLLBACK");
+      } catch (rollbackError) {
+        logger.error(
+          { rollbackError: rollbackError.message, userId, roadmapId },
+          "Rollback failed during roadmap enrollment"
+        );
+      }
+      if (conn) conn.release();
       logger.error(
         { error: transactionError.message, userId, roadmapId },
         "Transaction failed during roadmap enrollment"
@@ -368,6 +386,19 @@ export const unlockCourseForTheUserController = async (req, res) => {
       if (unlockResult.success) {
         await queryWithConn(conn, "COMMIT");
         conn.release();
+        // send notification for course unlock
+        await sendModuleUnlockedNotification({
+          userId,
+          roadmapCourseId,
+          moduleWeek: null,
+          sectionId: null,
+          contentRefId: null,
+          title: "Course Unlocked",
+          body: `You have successfully unlocked the course.`,
+          actionUrl: `/user/courses/${roadmapCourseId}`,
+          type: "course-enrolled",
+          source: "system",
+        });
         return sendApiResponse(res, {
           message: "Course unlocked successfully",
           data: {

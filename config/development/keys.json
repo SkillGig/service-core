@@ -33,5 +33,9 @@
         "secretKey": "KtHa/Gk7vCDQX0wrhMtuF3of0lqD7BjXMoGmdIgx"
       }
     }
+  },
+  "notificationService": {
+    "baseUrl": "http://localhost:4024/notifications",
+    "produceNewNotificationUrl": "/produce-user-notification"
   }
 }

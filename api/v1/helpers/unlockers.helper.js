@@ -15,10 +15,10 @@ import {
   getAllModuleDetailsQuery,
   markUnlockSectionToUserQuery,
   getPreviousChapterStatusQuery,
-  getPrerequisiteCourseQuery,
   getCourseMappingDetailsQuery,
 } from "../services/user-common.query.js";
-import { getConnection, queryWithConn } from "../../../config/db.js";
+import { queryWithConn } from "../../../config/db.js";
+import { sendModuleUnlockedNotification } from "./notification.helper.js";
 
 const Promise = Bluebird;
 
@@ -30,7 +30,7 @@ export const enrollUserToTheCourseInRoadmap = async (
 ) => {
   try {
     // Validate input parameters
-    if (!Array.isArray(courseToEnroll) || courseToEnroll.length === 0 || !userRoadmapId) {
+    if (!courseToEnroll.courseId || !courseToEnroll.roadmapCourseId || !userRoadmapId) {
       throw new Error("No courses available in the roadmap to enroll.");
     }
 
@@ -90,7 +90,7 @@ export const enrollUserToTheCourseInRoadmap = async (
     }
 
     // Step 3: Unlock appropriate modules based on course settings
-    await unlockAllModulesOfCourseToUser(
+    await processAllModulesOfCourseToUser(
       courseToEnroll.courseId,
       courseToEnroll.roadmapCourseId,
       userId,
@@ -122,7 +122,7 @@ export const enrollUserToTheCourseInRoadmap = async (
   }
 };
 
-export const unlockAllModulesOfCourseToUser = async (
+export const processAllModulesOfCourseToUser = async (
   courseId,
   roadmapCourseId,
   userId,
@@ -160,16 +160,15 @@ export const unlockAllModulesOfCourseToUser = async (
     await Promise.map(
       allSectionsUnderCourse,
       async (section, sectionIndex) => {
-        await processSectionUnlock(
+        await processSectionUnlock({
           section,
           sectionIndex,
           courseId,
           roadmapCourseId,
           userId,
-          isWeeklyUnlock,
           userCourseProgressId,
-          conn
-        );
+          conn,
+        });
       },
       { concurrency: 5 } // Limit concurrent operations to prevent database overload
     );
@@ -191,7 +190,7 @@ export const unlockAllModulesOfCourseToUser = async (
         roadmapCourseId,
         userId,
       },
-      "[unlockAllModulesOfCourseToUser] Module unlock failed"
+      "[processAllModulesOfCourseToUser] Module unlock failed"
     );
 
     return {
@@ -201,15 +200,15 @@ export const unlockAllModulesOfCourseToUser = async (
   }
 };
 
-const processSectionUnlock = async (
+const processSectionUnlock = async ({
   section,
   sectionIndex,
   courseId,
   roadmapCourseId,
   userId,
   userCourseProgressId,
-  conn
-) => {
+  conn,
+}) => {
   try {
     logger.debug(
       { sectionId: section.sectionId, sectionIndex, courseId, userCourseProgressId },
@@ -420,6 +419,19 @@ export const unlockModuleOfCourseToTheUser = async ({
         { userId, roadmapCourseId, moduleId },
         `Module ${moduleId} unlocked successfully for user ${userId}`
       );
+      // Send notification when module is unlocked
+      await sendModuleUnlockedNotification({
+        userId,
+        roadmapCourseId,
+        moduleWeek: moduleId,
+        sectionId: firstModule.sectionId,
+        contentRefId: null,
+        title: `Module ${moduleId} Unlocked!`,
+        body: `Congratulations! Module ${moduleId} is now unlocked for you.`,
+        actionUrl: `/user/roadmap/${roadmapCourseId}/module/${moduleId}`,
+        type: "module-unlocked",
+        source: "system",
+      });
       return {
         success: true,
         message: `Module ${moduleId} unlocked successfully for user ${userId}`,
@@ -508,6 +520,19 @@ export const unlockModuleOfCourseToTheUser = async ({
         { userId, roadmapCourseId, moduleId },
         `Module ${moduleId} unlocked successfully for user ${userId}`
       );
+      // Send notification when module is unlocked
+      await sendModuleUnlockedNotification({
+        userId,
+        roadmapCourseId,
+        moduleWeek: moduleId,
+        sectionId: currentSectionUnderModule.sectionId,
+        contentRefId: null,
+        title: `Module ${moduleId} Unlocked!`,
+        body: `Congratulations! Module ${moduleId} is now unlocked for you.`,
+        actionUrl: `/user/roadmap/${roadmapCourseId}/module/${moduleId}`,
+        type: "module-unlocked",
+        source: "system",
+      });
       return {
         success: true,
         message: `Module ${moduleId} unlocked successfully for user ${userId}`,

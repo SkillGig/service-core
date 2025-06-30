@@ -393,6 +393,7 @@ export const checkUserOrgMultipleRoadmapsEnrollmentQuery = async (userId) => {
 export const getAllCoursesMappedUnderRoadmapQuery = async (roadmapId, conn) => {
   logger.debug(roadmapId, `data being received: [getAllCoursesMappedUnderRoadmapQuery]`);
   const queryString = `SELECT rcm.id AS roadmapCourseId,
+            r.roadmap_name AS roadmapName,
             rcm.roadmap_id AS roadmapId,
             rcm.course_id AS courseId,
             rcm.is_mandatory_to_proceed AS isMandatory,
@@ -400,6 +401,7 @@ export const getAllCoursesMappedUnderRoadmapQuery = async (roadmapId, conn) => {
             rcm.order AS courseOrder,
             rcm.prerequisite_course_id AS preRequisite
     FROM roadmap_courses_mapping rcm
+    INNER JOIN roadmaps r ON rcm.roadmap_id = r.id
     INNER JOIN courses c ON rcm.course_id = c.id
     INNER JOIN tutors t ON c.tutor_id = t.id
     WHERE rcm.roadmap_id = ? AND rcm.is_active = 1 AND c.is_active = 1 ORDER By rcm.order;`;
@@ -518,9 +520,15 @@ export const insertIntoUserSectionProgressQuery = async (
 ]`
   );
   const queryString = `
-    INSERT INTO user_section_progress (user_id, roadmap_course_id, course_id, user_enrolled_course_progress_id , section_id, module_week, total_chapters, is_unlocked, is_completed)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    ON DUPLICATE KEY UPDATE is_unlocked = ?, updated_at = NOW();`;
+    INSERT INTO user_section_progress (
+      user_id, roadmap_course_id, course_id, user_enrolled_course_progress_id, section_id, module_week, total_chapters, is_unlocked, unlocked_at, is_completed
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, IF(? = 1, NOW(), NULL), 0
+    )
+    ON DUPLICATE KEY UPDATE
+      is_unlocked = VALUES(is_unlocked),
+      updated_at = NOW();
+  `;
   try {
     if (conn) {
       return await queryWithConn(conn, queryString, [
@@ -531,8 +539,8 @@ export const insertIntoUserSectionProgressQuery = async (
         sectionId,
         moduleWeek,
         totalChapters,
+        isUnlocked, 
         isUnlocked,
-        isUnlocked, // Update is_unlocked on duplicate key
       ]);
     }
     return await query(queryString, [
@@ -544,7 +552,7 @@ export const insertIntoUserSectionProgressQuery = async (
       moduleWeek,
       totalChapters,
       isUnlocked,
-      isUnlocked, // Update is_unlocked on duplicate key
+      isUnlocked,
     ]);
   } catch (error) {
     logger.error(error, `[insertIntoUserSectionProgressQuery]`);
@@ -572,8 +580,12 @@ export const insertIntoUserChapterProgressQuery = async (
     `data being received: [insertIntoUserChapterProgressQuery/data]`
   );
   const queryString = `
-    INSERT INTO user_chapter_progress (user_id, roadmap_course_id, course_id, section_id, user_enrolled_section_progress_id, chapter_id, total_duration, is_unlocked, content_type, content_ref_id, is_completed)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);`;
+    INSERT INTO user_chapter_progress (
+      user_id, roadmap_course_id, course_id, section_id, user_enrolled_section_progress_id, chapter_id, total_duration, is_unlocked, unlocked_at, content_type, content_ref_id, is_completed
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, IF(? = 1, NOW(), NULL), ?, ?, 0
+    );
+  `;
   try {
     if (conn) {
       return await queryWithConn(conn, queryString, [
@@ -585,6 +597,7 @@ export const insertIntoUserChapterProgressQuery = async (
         chapterId,
         totalDuration,
         isUnlocked,
+        isUnlocked, // for unlocked_at IF(? = 1, NOW(), NULL)
         contentType,
         contentType === "quiz" ? quizMappingId : projectMappingId,
       ]);
@@ -598,6 +611,7 @@ export const insertIntoUserChapterProgressQuery = async (
       chapterId,
       totalDuration,
       isUnlocked,
+      isUnlocked, // for unlocked_at IF(? = 1, NOW(), NULL)
       contentType,
       contentType === "quiz" ? quizMappingId : projectMappingId,
     ]);
