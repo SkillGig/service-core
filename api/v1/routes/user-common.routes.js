@@ -8,6 +8,10 @@ import {
   userConfigController,
   getRoadmapDetails,
   getCourseDetails,
+  unlockCourseForTheUserController,
+  unlockModuleUnderCourseController,
+  unlockSectionUnderCourseController,
+  unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 
@@ -17,35 +21,23 @@ router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.post(
-  "/enroll-roadmap",
-  authenticateUserTokenMiddleware,
-  enrollUserToRoadmap
-);
+router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 
-router.get(
-  "/roadmap-details",
-  authenticateUserTokenMiddleware,
-  getRoadmapDetails
-);
+router.post("/enroll-course", authenticateUserTokenMiddleware, unlockCourseForTheUserController);
 
-router.get(
-  "/course-details",
-  authenticateUserTokenMiddleware,
-  getCourseDetails
-);
+router.post("/unlock-module", authenticateUserTokenMiddleware, unlockModuleUnderCourseController);
 
-router.get(
-  "/roadmaps",
-  authenticateUserTokenMiddleware,
-  fetchUserSelectedRoadmaps
-);
+router.post("/unlock-section", authenticateUserTokenMiddleware, unlockSectionUnderCourseController);
 
-router.get(
-  "/notifications/all",
-  authenticateUserTokenMiddleware,
-  getAllUserNotifications
-);
+router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnderCourseController);
+
+router.get("/roadmap-details", authenticateUserTokenMiddleware, getRoadmapDetails);
+
+router.get("/course-details", authenticateUserTokenMiddleware, getCourseDetails);
+
+router.get("/roadmaps", authenticateUserTokenMiddleware, fetchUserSelectedRoadmaps);
+
+router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
 
 router.patch(
   "/notifications/mark-as-seen",

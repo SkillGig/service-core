@@ -878,7 +878,7 @@ export const getCourseMappingDetailsQuery = async (roadmapCourseId, conn) => {
 export const getUserCourseCompletionStatusQuery = async (userId, roadmapId, courseId, conn) => {
   logger.debug(
     userId,
-    roadmapCourseId,
+    roadmapId,
     `data being received: [getUserCourseCompletionStatusQuery]`
   );
 

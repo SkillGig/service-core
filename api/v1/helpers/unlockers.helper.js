@@ -90,7 +90,7 @@ export const enrollUserToTheCourseInRoadmap = async (
     }
 
     // Step 3: Unlock appropriate modules based on course settings
-    await processAllModulesOfCourseToUser(
+    const result = await processAllModulesOfCourseToUser(
       courseToEnroll.courseId,
       courseToEnroll.roadmapCourseId,
       userId,
@@ -99,6 +99,13 @@ export const enrollUserToTheCourseInRoadmap = async (
       courseResult.insertId,
       conn
     );
+
+    if (result.success === false) {
+      return {
+        success: false,
+        message: `Failed to unlock all modules of the course for the user`,
+      };
+    }
 
     logger.info(
       { userId, courseId: courseToEnroll.courseId },
@@ -239,7 +246,7 @@ const processSectionUnlock = async ({
     logger.debug(sectionProgressResult, `Section progress result for section`);
 
     if (sectionProgressResult.affectedRows === 0) {
-      throw new Error(`Failed to unlock section ${section.sectionId} for user ${userId}`);
+      throw new Error(`Failed to unlock section ${section.sectionId}`);
     }
 
     logger.debug(
@@ -417,7 +424,7 @@ export const unlockModuleOfCourseToTheUser = async ({
       conn.release();
       logger.info(
         { userId, roadmapCourseId, moduleId },
-        `Module ${moduleId} unlocked successfully for user ${userId}`
+        `Module ${moduleId} unlocked successfully`
       );
       // Send notification when module is unlocked
       await sendModuleUnlockedNotification({
@@ -434,7 +441,7 @@ export const unlockModuleOfCourseToTheUser = async ({
       });
       return {
         success: true,
-        message: `Module ${moduleId} unlocked successfully for user ${userId}`,
+        message: `Module ${moduleId} unlocked successfully`,
       };
     } else {
       // check if the previous module sections are completed
@@ -470,6 +477,7 @@ export const unlockModuleOfCourseToTheUser = async ({
           lastSectionOfPreviousModuleCompletedAt,
           firstSectionOfPreviousModuleEnrolledAt,
           isPreviousModuleCompleted,
+          previousModule,
           numberOfDaysDifference,
           condition: roadmapCourseDetails.isWeeklyUnlock && numberOfDaysDifference < 7,
         },
@@ -518,7 +526,7 @@ export const unlockModuleOfCourseToTheUser = async ({
       conn.release();
       logger.info(
         { userId, roadmapCourseId, moduleId },
-        `Module ${moduleId} unlocked successfully for user ${userId}`
+        `Module ${moduleId} unlocked successfully`
       );
       // Send notification when module is unlocked
       await sendModuleUnlockedNotification({
@@ -535,7 +543,7 @@ export const unlockModuleOfCourseToTheUser = async ({
       });
       return {
         success: true,
-        message: `Module ${moduleId} unlocked successfully for user ${userId}`,
+        message: `Module ${moduleId} unlocked successfully`,
       };
     }
   } catch (error) {
@@ -544,7 +552,7 @@ export const unlockModuleOfCourseToTheUser = async ({
       conn.release();
     }
     logger.error(error, `error being received: [unlockModuleOfCourseToTheUser]`);
-    throw new Error(`Failed to unlock module ${moduleId} for user ${userId}: ${error.message}`);
+    throw new Error(`Failed to unlock module ${moduleId}: ${error.message}`);
   }
 };
 
@@ -588,7 +596,7 @@ export const unlockSectionUnderCourse = async ({ userId, roadmapCourseId, sectio
     logger.debug(sectionUnlockResult, `data being received: [sectionUnlockResult]`);
 
     if (sectionUnlockResult.affectedRows === 0) {
-      throw new Error(`Failed to unlock section ${sectionId} for user ${userId}`);
+      throw new Error(`Failed to unlock section ${sectionId}`);
     }
 
     const getAllChaptersUnderSection = await getAllChaptersUnderSectionForUserQuery(
@@ -598,7 +606,7 @@ export const unlockSectionUnderCourse = async ({ userId, roadmapCourseId, sectio
       conn
     );
     if (getAllChaptersUnderSection.length === 0) {
-      throw new Error(`No chapters found under section ${sectionId} for user ${userId}`);
+      throw new Error(`No chapters found under section ${sectionId}`);
     }
     // mark the first chapter of the section as unlocked
     const firstChapter = getAllChaptersUnderSection[0];
@@ -611,7 +619,7 @@ export const unlockSectionUnderCourse = async ({ userId, roadmapCourseId, sectio
     });
     if (!firstChapterUnlockResult.success) {
       throw new Error(
-        `Failed to unlock first chapter ${firstChapter.chapterId} of section ${sectionId} for user ${userId}: ${firstChapterUnlockResult.message}`
+        `Failed to unlock first chapter ${firstChapter.chapterId} of section ${sectionId}: ${firstChapterUnlockResult.message}`
       );
     }
 
@@ -622,7 +630,7 @@ export const unlockSectionUnderCourse = async ({ userId, roadmapCourseId, sectio
 
     return {
       success: true,
-      message: `Section ${sectionId} and first chapter ${firstChapter.chapterId} unlocked successfully for user ${userId}`,
+      message: `Section ${sectionId} and first chapter ${firstChapter.chapterId} unlocked successfully`,
     };
   } catch (error) {
     logger.error(
@@ -683,7 +691,7 @@ export const unlockChapterToUserUnderCourse = async ({
       conn,
     });
     if (chapterUnlockResult.affectedRows === 0) {
-      throw new Error(`Failed to unlock chapter ${chapterId} for user ${userId}`);
+      throw new Error(`Failed to unlock chapter ${chapterId}`);
     }
     logger.debug(
       { chapterId, userId, roadmapCourseId, sectionId },
@@ -691,7 +699,7 @@ export const unlockChapterToUserUnderCourse = async ({
     );
     return {
       success: true,
-      message: `Chapter ${chapterId} unlocked successfully for user ${userId}`,
+      message: `Chapter ${chapterId} unlocked successfully`,
     };
   } catch (error) {
     logger.error(

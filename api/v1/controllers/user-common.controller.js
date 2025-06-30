@@ -113,14 +113,6 @@ export const userConfigController = async (req, res) => {
   }
 };
 
-/**
- * Enrolls a user to a roadmap and automatically enrolls them to the first course
- * Handles duplicate enrollment checks and organization-specific enrollment rules
- *
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @returns {Object} API response with enrollment status
- */
 export const enrollUserToRoadmap = async (req, res) => {
   const userId = req.user.userId;
   const { roadmapId } = req.body;
@@ -199,7 +191,7 @@ export const enrollUserToRoadmap = async (req, res) => {
       await queryWithConn(conn, "COMMIT");
       conn.release();
       // send notification for roadmap enrollment
-      
+
       await sendModuleUnlockedNotification({
         userId,
         roadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
@@ -515,7 +507,7 @@ export const unlockModuleUnderCourseController = async (req, res) => {
     return sendApiError(
       res,
       {
-        notifyUser: "Something went wrong. Please try again!",
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
       },
       500
     );
@@ -535,12 +527,12 @@ export const unlockSectionUnderCourseController = async (req, res) => {
     conn = await getConnection();
     await queryWithConn(conn, "START TRANSACTION");
 
-    const unlockSectionResult = await unlockSectionUnderCourse(
+    const unlockSectionResult = await unlockSectionUnderCourse({
       userId,
       roadmapCourseId,
       sectionId,
-      conn
-    );
+      conn,
+    });
     if (unlockSectionResult.success) {
       await queryWithConn(conn, "COMMIT");
       conn.release();
@@ -560,7 +552,7 @@ export const unlockSectionUnderCourseController = async (req, res) => {
     return sendApiError(
       res,
       {
-        notifyUser: "Something went wrong. Please try again!",
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
       },
       500
     );
@@ -584,13 +576,13 @@ export const unlockChapterUnderCourseController = async (req, res) => {
     conn = await getConnection();
     await queryWithConn(conn, "START TRANSACTION");
 
-    const unlockChapterResult = await unlockChapterToUserUnderCourse(
+    const unlockChapterResult = await unlockChapterToUserUnderCourse({
       userId,
       roadmapCourseId,
       sectionId,
       chapterId,
-      conn
-    );
+      conn,
+    });
     if (unlockChapterResult.success) {
       await queryWithConn(conn, "COMMIT");
       conn.release();
@@ -615,7 +607,7 @@ export const unlockChapterUnderCourseController = async (req, res) => {
     return sendApiError(
       res,
       {
-        notifyUser: "Something went wrong. Please try again!",
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
       },
       500
     );
