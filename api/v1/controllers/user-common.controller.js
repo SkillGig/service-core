@@ -312,115 +312,101 @@ export const getCourseDetails = async (req, res) => {
 
   try {
     const courseIdInfo = await getCourseMappingDetailsQuery(roadmapCourseId);
-    if (!courseIdInfo || !courseIdInfo.courseId) {
+    if (!courseIdInfo?.courseId) {
       return sendApiError(res, { notifyUser: "Course not found" }, 404);
     }
     const courseId = courseIdInfo.courseId;
-    const courseDetails = await getCourseDetailsQuery(courseId);
-    if (courseDetails) {
-      const tutorDetails = await getTutorDetailsQuery(courseDetails.tutorId);
-      const tags = await getCourseTagsQuery(courseId);
-      const learnings = await getCourseLearningsQuery(courseId);
-      const reviews = await getCourseReviewsQuery(courseId);
-      const moduleData = await getCourseModulesQuery(courseId);
 
-      // Transform the module data to the desired format
-      const transformedModules = transformModuleData(moduleData);
+    // Fetch all course-related data in parallel
+    const [
+      courseDetails,
+      tutorDetails,
+      tags,
+      learnings,
+      reviews,
+      moduleData,
+      userStatusOfCourse
+    ] = await Promise.all([
+      getCourseDetailsQuery(courseId),
+      getTutorDetailsQuery(courseIdInfo.tutorId),
+      getCourseTagsQuery(courseId),
+      getCourseLearningsQuery(courseId),
+      getCourseReviewsQuery(courseId),
+      getCourseModulesQuery(courseId),
+      userCurrentRoadmapCourseStatusQuery({ userId, roadmapId, roadmapCourseId })
+    ]);
 
-      const userStatusOfCourse = await userCurrentRoadmapCourseStatusQuery({
-        userId,
-        roadmapId,
-        roadmapCourseId,
-      });
-
-      let currentRoadmapStatus = null;
-      let currentRoadmapCourseStatus = null;
-      let preRequisiteCourseDetails = null;
-
-      if (!userStatusOfCourse) {
-        const roadmapDetails = await getCurrentRoadmapStatusQuery(userId, roadmapId);
-        if (roadmapDetails) {
-          currentRoadmapStatus = "in-progress";
-
-          const roadmapCourseMappingDetails = await getRoadmapCourseMappingDetailsUnderRoadmapQuery(
-            roadmapCourseId,
-            roadmapId
-          );
-          logger.debug(
-            { roadmapCourseMappingDetails, userId, roadmapId },
-            "Fetched roadmap course mapping details"
-          );
-          if (roadmapCourseMappingDetails) {
-            currentRoadmapCourseStatus = "locked";
-            const preRequisiteCourse = await userCurrentRoadmapCourseStatusQuery({
-              userId,
-              roadmapId: roadmapCourseMappingDetails.roadmapId,
-              courseId: roadmapCourseMappingDetails.preRequisiteCourseId,
-            });
-            if (preRequisiteCourse) {
-              currentRoadmapCourseStatus = preRequisiteCourse.isCompleted
-                ? "ready-to-enroll"
-                : "in-progress";
-              preRequisiteCourseDetails = {
-                roadmapId: roadmapCourseMappingDetails.roadmapId,
-                roadmapCourseId: roadmapCourseMappingDetails.preRequisiteCourseId,
-                isEnrolled: true,
-                completedSections: preRequisiteCourse.completedSections || 0,
-                progressPercent: preRequisiteCourse.progressPercent || 0,
-                totalSections: preRequisiteCourse.totalSections || 0,
-                courseTitle: preRequisiteCourse.courseTitle || "",
-                courseDescription: preRequisiteCourse.courseDescription || "",
-                courseThumbnailUrl: preRequisiteCourse.courseThumbnailUrl || "",
-              };
-            } else {
-              currentRoadmapCourseStatus = "locked";
-              const preRequisiteCourse = await getTotalSectionsUnderRoadmapCourseQuery(
-                roadmapCourseMappingDetails.preRequisiteCourseId
-              );
-              preRequisiteCourseDetails = {
-                roadmapId: roadmapCourseMappingDetails.roadmapId,
-                roadmapCourseId: roadmapCourseMappingDetails.preRequisiteCourseId,
-                isEnrolled: false,
-                totalSection: preRequisiteCourse.totalSections || 0,
-                courseTitle: preRequisiteCourse.courseTitle || "",
-                courseDescription: preRequisiteCourse.courseDescription || "",
-                courseThumbnailUrl: preRequisiteCourse.courseThumbnailUrl || "",
-              };
-            }
-          }
-        } else {
-          currentRoadmapStatus = "not-enrolled";
-          currentRoadmapCourseStatus = "not-enrolled";
-          preRequisiteCourseDetails = null;
-        }
-      }
-
-      if (userStatusOfCourse) {
-        currentRoadmapStatus = "in-progress";
-        currentRoadmapCourseStatus = userStatusOfCourse.isCompleted ? "completed" : "in-progress";
-      }
-
-      return sendApiResponse(res, {
-        courseDetails,
-        tutorDetails,
-        tags,
-        learnings,
-        reviews,
-        ...transformedModules,
-        currentRoadmapStatus,
-        currentRoadmapCourseStatus,
-        preRequisiteCourseDetails,
-      });
-    } else {
+    if (!courseDetails) {
       return sendApiError(res, { notifyUser: "Course not found" }, 404);
     }
+
+    // Transform the module data to the desired format
+    const transformedModules = transformModuleData(moduleData);
+
+    // Helper to build preRequisiteCourseDetails
+    const buildPreReqDetails = async (mappingDetails, isEnrolled, preReqCourse) => ({
+      roadmapId: mappingDetails.roadmapId,
+      roadmapCourseId: mappingDetails.preRequisiteCourseId,
+      isEnrolled,
+      completedSections: preReqCourse?.completedSections || 0,
+      progressPercent: preReqCourse?.progressPercent || 0,
+      totalSections: preReqCourse?.totalSections || preReqCourse?.totalSection || 0,
+      courseTitle: preReqCourse?.courseTitle || "",
+      courseDescription: preReqCourse?.courseDescription || "",
+      courseThumbnailUrl: preReqCourse?.courseThumbnailUrl || "",
+    });
+
+    let currentRoadmapStatus = null;
+    let currentRoadmapCourseStatus = null;
+    let preRequisiteCourseDetails = null;
+
+    if (!userStatusOfCourse) {
+      const roadmapDetails = await getCurrentRoadmapStatusQuery(userId, roadmapId);
+      if (roadmapDetails) {
+        currentRoadmapStatus = "in-progress";
+        const mappingDetails = await getRoadmapCourseMappingDetailsUnderRoadmapQuery(roadmapCourseId, roadmapId);
+        logger.debug({ mappingDetails, userId, roadmapId }, "Fetched roadmap course mapping details");
+        if (mappingDetails) {
+          currentRoadmapCourseStatus = "locked";
+          const preRequisiteCourse = await userCurrentRoadmapCourseStatusQuery({
+            userId,
+            roadmapId: mappingDetails.roadmapId,
+            courseId: mappingDetails.preRequisiteCourseId,
+          });
+          if (preRequisiteCourse) {
+            currentRoadmapCourseStatus = preRequisiteCourse.isCompleted ? "ready-to-enroll" : "in-progress";
+            preRequisiteCourseDetails = await buildPreReqDetails(mappingDetails, true, preRequisiteCourse);
+          } else {
+            currentRoadmapCourseStatus = "locked";
+            const preRequisiteCourse = await getTotalSectionsUnderRoadmapCourseQuery(mappingDetails.preRequisiteCourseId);
+            preRequisiteCourseDetails = await buildPreReqDetails(mappingDetails, false, preRequisiteCourse);
+          }
+        }
+      } else {
+        currentRoadmapStatus = "not-enrolled";
+        currentRoadmapCourseStatus = "not-enrolled";
+      }
+    } else {
+      currentRoadmapStatus = "in-progress";
+      currentRoadmapCourseStatus = userStatusOfCourse.isCompleted ? "completed" : "in-progress";
+    }
+
+    return sendApiResponse(res, {
+      courseDetails,
+      tutorDetails,
+      tags,
+      learnings,
+      reviews,
+      ...transformedModules,
+      currentRoadmapStatus,
+      currentRoadmapCourseStatus,
+      preRequisiteCourseDetails,
+    });
   } catch (error) {
     logger.error(error, `error being received: [getCourseDetails]`);
     return sendApiError(
       res,
-      {
-        notifyUser: "Something went wrong. Please try again!",
-      },
+      { notifyUser: "Something went wrong. Please try again!" },
       500
     );
   }
