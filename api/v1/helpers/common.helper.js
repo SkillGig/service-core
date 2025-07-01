@@ -190,3 +190,133 @@ export const transformModuleData = (moduleData) => {
 
   return { summary: moduleData.summary, modules };
 };
+
+export const transformCourseSummary = (summaryArr) => {
+  let totalVideos = 0,
+    completedVideos = 0;
+  let totalReadings = 0,
+    completedReadings = 0;
+  let totalQuizzes = 0,
+    completedQuizzes = 0;
+  let totalModulePercent = 0;
+  let moduleCount = summaryArr.length;
+  let currentModule = null;
+
+  summaryArr.forEach((module) => {
+    totalVideos += module.totalVideos;
+    completedVideos += module.completedVideos;
+    totalReadings += module.totalReadings;
+    completedReadings += module.completedReadings;
+    totalQuizzes += module.totalQuizzes;
+    completedQuizzes += module.completedQuizzes;
+    totalModulePercent += module.moduleCompletionPercent;
+
+    if (!currentModule && module.status === "in-progress") {
+      currentModule = module;
+    }
+  });
+
+  const overallCompletionPercent =
+    moduleCount > 0 ? Math.round(totalModulePercent / moduleCount) : 0;
+  const overallVideosPercent =
+    totalVideos > 0 ? Math.round((completedVideos / totalVideos) * 100) : 0;
+  const overallReadingsPercent =
+    totalReadings > 0 ? Math.round((completedReadings / totalReadings) * 100) : 0;
+  const overallQuizzesPercent =
+    totalQuizzes > 0 ? Math.round((completedQuizzes / totalQuizzes) * 100) : 0;
+
+  return {
+    modules: summaryArr,
+    overall: {
+      totalVideos,
+      completedVideos,
+      overallVideosPercent,
+      totalReadings,
+      completedReadings,
+      overallReadingsPercent,
+      totalQuizzes,
+      completedQuizzes,
+      overallQuizzesPercent,
+      overallCompletionPercent,
+    },
+    currentModule,
+  };
+};
+
+export const transformModuleDetails = (data) => {
+  if (!Array.isArray(data) || data.length === 0) return { sections: [], overallSummary: {} };
+
+  // Group chapters by section
+  const sectionMap = {};
+  let latestUnlockedAt = null;
+  let currentSectionId = null;
+  let currentChapterId = null;
+  let moduleUnlockedStatus = false;
+
+  data.forEach((item) => {
+    if (!sectionMap[item.courseSectionId]) {
+      sectionMap[item.courseSectionId] = {
+        sectionId: item.courseSectionId,
+        sectionTitle: item.sectionTitle,
+        sectionDescription: item.sectionDescription,
+        chapters: [],
+        sectionTotalChapters: item.sectionTotalChapters,
+      };
+    }
+    sectionMap[item.courseSectionId].chapters.push({
+      chapterId: item.chapterId,
+      contentType: item.contentType,
+      chapterTitle: item.chapterTitle,
+      chapterDescription: item.chapterDescription,
+      watchedDuration: item.watchedDuration,
+      totalDuration: item.totalDuration,
+      isUnlocked: item.isChapterUnlocked,
+      unlockedAt: item.unlockedAt,
+      isCompleted: item.isCompleted,
+      completionPercent: item.completionPercent,
+      quizXpPoints: item.quizXpPoints || null,
+      projectXpPoints: item.projectXpPoints || null,
+    });
+
+    // Find the most recently unlocked chapter
+    if (item.unlockedAt) {
+      if (!latestUnlockedAt || new Date(item.unlockedAt) > new Date(latestUnlockedAt)) {
+        latestUnlockedAt = item.unlockedAt;
+        currentSectionId = item.courseSectionId;
+        currentChapterId = item.chapterId;
+        moduleUnlockedStatus = true;
+      }
+    }
+  });
+
+  // Build sections array with sectionOverallSummary
+  const sections = Object.values(sectionMap).map((section) => {
+    const totalChapters = section.chapters.length;
+    const completedChapters = section.chapters.filter((ch) => ch.isCompleted).length;
+    const sectionCompletionPercent =
+      totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
+    const isUnlocked = section.chapters.some((ch) => ch.isUnlocked);
+    const isCompleted = completedChapters === totalChapters && totalChapters > 0;
+
+    return {
+      ...section,
+      sectionOverallSummary: {
+        totalChapters,
+        completedChapters,
+        sectionCompletionPercent,
+        isUnlocked,
+        isCompleted,
+      },
+    };
+  });
+
+  return {
+    sections,
+    overallSummary: {
+      currentSectionId,
+      currentChapterId,
+      latestUnlockedAt,
+      moduleUnlockedStatus,
+    },
+  };
+};

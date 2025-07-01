@@ -71,6 +71,17 @@ export const enrollUserToTheCourseInRoadmap = async (
       conn
     );
 
+    // find the length of totalSectionsUnderCourse with same moduleWeek
+    const sectionsByModuleWeek = totalSectionsUnderCourse.reduce((acc, section) => {
+      if (!acc[section.moduleWeek]) {
+        acc[section.moduleWeek] = [];
+      }
+      acc[section.moduleWeek].push(section);
+      return acc;
+    }, {});
+
+    
+
     if (totalSectionsUnderCourse.length === 0) {
       throw new Error("No sections found under the first course of the roadmap.");
     }
@@ -80,7 +91,7 @@ export const enrollUserToTheCourseInRoadmap = async (
       userId,
       courseToEnroll.roadmapCourseId,
       courseToEnroll.courseId,
-      totalSectionsUnderCourse.length,
+      Object.keys(sectionsByModuleWeek).length, // totalModules
       userRoadmapId,
       conn
     );

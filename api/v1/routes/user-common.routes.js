@@ -7,17 +7,17 @@ import {
   enrollUserToRoadmap,
   userConfigController,
   getRoadmapDetails,
-  getCourseDetails,
   unlockCourseForTheUserController,
   unlockModuleUnderCourseController,
   unlockSectionUnderCourseController,
   unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
+import UserCourseRoutes from "./user-course.routes.js";
 
 const router = Router();
 
-router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
+router.use("/streaks", UserStreaksRoutes);
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
@@ -33,9 +33,9 @@ router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnd
 
 router.get("/roadmap-details", authenticateUserTokenMiddleware, getRoadmapDetails);
 
-router.get("/course-details", authenticateUserTokenMiddleware, getCourseDetails);
-
 router.get("/roadmaps", authenticateUserTokenMiddleware, fetchUserSelectedRoadmaps);
+
+router.use("/roadmap/roadmap-course", UserCourseRoutes);
 
 router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
 

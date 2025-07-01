@@ -441,13 +441,13 @@ export const insertUserCourseProgressQuery = async (
   userId,
   roadmapCourseId,
   courseId,
-  totalSections,
+  totalModules,
   userRoadmapId,
   conn
 ) => {
-  const queryString = `INSERT INTO user_course_progress (user_id, roadmap_course_id, course_id, user_enrolled_roadmap_id, total_sections, completed_sections, progress_percent)
+  const queryString = `INSERT INTO user_course_progress (user_id, roadmap_course_id, course_id, user_enrolled_roadmap_id, total_modules, completed_modules, progress_percent)
     VALUES (?, ?, ?, ?, ?, 0, 0)
-    ON DUPLICATE KEY UPDATE total_sections = ?, updated_at = NOW();`;
+    ON DUPLICATE KEY UPDATE total_modules = ?, updated_at = NOW();`;
   try {
     if (conn) {
       return await queryWithConn(conn, queryString, [
@@ -455,8 +455,8 @@ export const insertUserCourseProgressQuery = async (
         roadmapCourseId,
         courseId,
         userRoadmapId,
-        totalSections,
-        totalSections,
+        totalModules,
+        totalModules,
       ]);
     }
     return await query(queryString, [
@@ -464,8 +464,8 @@ export const insertUserCourseProgressQuery = async (
       roadmapCourseId,
       courseId,
       userRoadmapId,
-      totalSections,
-      totalSections,
+      totalModules,
+      totalModules,
     ]);
   } catch (error) {
     logger.error(error, `[insertUserCourseProgressQuery]`);
@@ -879,8 +879,8 @@ export const getUserCourseCompletionStatusQuery = async (userId, roadmapId, cour
   logger.debug(userId, roadmapId, `data being received: [getUserCourseCompletionStatusQuery]`);
 
   const queryString = `
-    SELECT ucp.total_sections AS totalSections,
-           ucp.completed_sections AS completedSections, ucp.progress_percent AS progressPercent, ucp.is_completed AS isCompleted
+    SELECT ucp.total_modules AS totalModules,
+           ucp.completed_modules AS completedModules, ucp.progress_percent AS progressPercent, ucp.is_completed AS isCompleted
     FROM user_course_progress ucp
     INNER JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
     WHERE ucp.user_id = ? AND rcm.roadmap_id = ? AND rcm.course_id = ?;`;
@@ -912,17 +912,19 @@ export const userCurrentRoadmapCourseStatusQuery = async ({
     `data being received: [userCurrentRoadmapCourseStatusQuery]`
   );
   let queryString = `
-    SELECT ucp.id AS userCourseProgressId, ucp.total_sections AS totalSections,
-           ucp.completed_sections AS completedSections, ucp.progress_percent AS progressPercent,
+    SELECT ucp.id AS userCourseProgressId, ucp.total_modules AS totalModules,
+           ucp.completed_modules AS completedModules, ucp.progress_percent AS progressPercent,
           ucp.created_at AS enrolledAt,
            ucp.is_completed AS isCompleted, ucp.completed_at AS completedAt,
            rcm.prerequisite_course_id AS prerequisiteCourseId, rcm.weekly_unlock AS isWeeklyUnlock,
            rcm.order AS courseOrder, rcm.is_active AS isActive,
+            ucc.id AS userCourseCertificateId, ucc.certificate_url AS certificateUrl,
            c.id AS courseId, c.title AS courseTitle, c.thumbnail_url AS courseThumbnailUrl,
            c.level AS courseLevel, c.description AS courseDescription, c.tutor_id AS tutorId
     FROM user_course_progress ucp
     INNER JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
     INNER JOIN courses c ON rcm.course_id = c.id
+    LEFT JOIN user_course_certificates ucc ON ucp.is_completed = 1 AND ucp.user_course_certificate_id = ucc.id
     WHERE ucp.user_id = ? AND rcm.roadmap_id = ?`;
 
   if (roadmapCourseId) {
@@ -989,7 +991,11 @@ export const getTotalSectionsUnderRoadmapCourseQuery = async (courseId) => {
   logger.debug(courseId, `data being received: [getTotalSectionsUnderRoadmapCourseQuery]`);
 
   const queryString = `
-    SELECT COUNT(*) AS totalSections, c.title AS courseTitle, c.description AS courseDescription, c.thumbnail_url AS courseThumbnailUrl
+    SELECT COUNT(*) AS totalSections,
+       COUNT(DISTINCT s.module_week) AS totalModules,
+       c.title AS courseTitle,
+       c.description AS courseDescription,
+       c.thumbnail_url AS courseThumbnailUrl
     FROM sections s
     INNER JOIN courses c ON s.course_id = c.id
     WHERE s.course_id = ? AND s.is_active = 1;`;
@@ -999,6 +1005,117 @@ export const getTotalSectionsUnderRoadmapCourseQuery = async (courseId) => {
     return result.length ? result[0] : 0;
   } catch (error) {
     logger.error(error, `error being received: [getTotalSectionsUnderRoadmapCourseQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserRoadmapCourseOverallSummaryQuery = async (userId, roadmapCourseId) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    `data being received: [getUserRoadmapCourseOverallSummaryQuery]`
+  );
+
+  const queryString = `
+    SELECT usp.module_week                         AS moduleWeek,
+       CAST(SUM(CASE WHEN ucp.content_type = 'video' THEN 1 ELSE 0 END) AS UNSIGNED)                             AS totalVideos,
+       CAST(SUM(CASE
+               WHEN ucp.content_type = 'video' AND ucp.is_completed = 1 AND ucp.total_duration = ucp.watched_duration
+                   THEN 1
+               ELSE 0 END) AS UNSIGNED)  AS completedVideos,
+       CAST(SUM(CASE WHEN ucp.content_type = 'document' THEN 1 ELSE 0 END) AS UNSIGNED)                          AS totalReadings,
+       CAST(SUM(CASE WHEN ucp.content_type = 'document' AND ucp.is_completed = 1 THEN 1 ELSE 0 END) AS UNSIGNED) AS completedReadings,
+       CAST(SUM(CASE WHEN ucp.content_type = 'quiz' THEN 1 ELSE 0 END) AS UNSIGNED)                              AS totalQuizzes,
+       CAST(SUM(CASE WHEN ucp.content_type = 'quiz' AND ucp.is_completed = 1 THEN 1 ELSE 0 END) AS UNSIGNED)     AS completedQuizzes,
+       CAST(ROUND(
+               100 * AVG(
+                       CASE
+                           WHEN ucp.content_type = 'video' THEN GREATEST(
+                                   LEAST(ucp.watched_duration / NULLIF(ucp.total_duration, 0), 1),
+                                   0
+                                                                )
+                           ELSE CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END
+                           END
+                     ),
+               0
+      ) AS UNSIGNED) AS moduleCompletionPercent,
+       CASE
+           WHEN SUM(CASE WHEN ucp.is_unlocked = 1 THEN 1 ELSE 0 END) = 0 THEN 'locked'
+           ELSE CASE
+                    WHEN SUM(CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END) = COUNT(DISTINCT ucp.id) THEN 'completed'
+                    ELSE 'in-progress' END END AS status
+    FROM user_chapter_progress ucp
+            INNER JOIN user_section_progress usp ON ucp.user_enrolled_section_progress_id = usp.id
+    WHERE ucp.user_id = ?
+      AND ucp.roadmap_course_id = ?
+    GROUP BY usp.module_week
+    ORDER BY usp.module_week;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserRoadmapCourseOverallSummaryQuery/error]`);
+    throw error;
+  }
+};
+
+export const getModuleLevelCourseProgressQueryWithChapters = async (
+  userId,
+  roadmapCourseId,
+  moduleWeek
+) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    moduleWeek,
+    `data being received: [getModuleLevelCourseProgressQueryWithChapters]`
+  );
+
+  const queryString = `
+    SELECT usp.module_week      AS moduleWeek,
+       usp.section_id       AS courseSectionId,
+       s.title              AS sectionTitle,
+       s.description        AS sectionDescription,
+       usp.total_chapters   AS sectionTotalChapters,
+       ucp.chapter_id       AS chapterId,
+       ucp.content_type     AS contentType,
+       c.title              AS chapterTitle,
+       c.description        AS chapterDescription,
+       ucp.watched_duration AS watchedDuration,
+       ucp.total_duration   AS totalDuration,
+       ucp.is_unlocked      AS isChapterUnlocked,
+       ucp.unlocked_at      AS unlockedAt,
+       ucp.is_completed     AS isCompleted,
+       qm.xp_points         AS quizXpPoints,
+       pm.xp_points         AS projectXpPoints,
+       CAST(ROUND(
+               100 * GREATEST(
+                       CASE
+                           WHEN ucp.content_type = 'video' THEN GREATEST(
+                                   LEAST(ucp.watched_duration / NULLIF(ucp.total_duration, 0), 1),
+                                   0)
+                           ELSE CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END
+                           END, 0)) AS UNSIGNED)                    AS completionPercent
+      FROM user_chapter_progress ucp
+              INNER JOIN user_section_progress usp ON ucp.user_enrolled_section_progress_id = usp.id
+              INNER JOIN chapters c ON ucp.chapter_id = c.id
+              INNER JOIN sections s ON ucp.section_id = s.id
+              LEFT JOIN quiz_mapping qm ON ucp.content_type = 'quiz' AND ucp.content_ref_id = qm.id
+              LEFT JOIN projects_mapping pm ON ucp.content_type = 'project' AND ucp.content_ref_id = pm.id
+      WHERE ucp.user_id = ?
+        AND ucp.roadmap_course_id = ?
+        AND usp.module_week = ?
+      ORDER BY usp.module_week, ucp.chapter_id;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId, moduleWeek]);
+    return result;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getModuleLevelCourseProgressQueryWithChapters/error]`
+    );
     throw error;
   }
 };
