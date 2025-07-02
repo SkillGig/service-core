@@ -1,4 +1,4 @@
-import { query } from "../../../config/db.js";
+import { query, queryWithConn } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 import Bluebird from "bluebird";
 const Promise = Bluebird;
@@ -31,11 +31,7 @@ export const countUserNotifications = async (userId) => {
   }
 };
 
-export const fetchUserNotificationsPaginated = async (
-  userId,
-  page = 1,
-  limit = 10
-) => {
+export const fetchUserNotificationsPaginated = async (userId, page = 1, limit = 10) => {
   const offset = (page - 1) * limit;
 
   const queryString = `
@@ -126,16 +122,17 @@ export const userDetailsQuery = async (userId) => {
   }
 };
 
-export const setUserRoadmapQuery = async (userId, roadmapId) => {
+export const setUserRoadmapQuery = async (userId, roadmapId, conn) => {
   logger.debug(userId, `data being received: [setUserRoadmapQuery]`);
-
   const queryString = `
     INSERT INTO user_enrolled_roadmaps (user_id, roadmap_id)
     VALUES (?, ?)
   `;
-
   try {
-    return await query(queryString, [roadmapId, userId]);
+    if (conn) {
+      return await queryWithConn(conn, queryString, [userId, roadmapId]);
+    }
+    return await query(queryString, [userId, roadmapId]);
   } catch (error) {
     logger.error(error, `error being received: [setUserRoadmapQuery/error]`);
     throw error;
@@ -173,7 +170,7 @@ export const getRoadmapDetailsQuery = async (roadmapId) => {
       t.name AS tutor_name,
       GROUP_CONCAT(DISTINCT tag.title) AS tags,
       AVG(cr.rating) AS rating,
-      COUNT(DISTINCT uec.id) AS enrolled_count
+      COUNT(DISTINCT ucp.id) AS enrolled_count
     FROM roadmaps r
     JOIN roadmap_courses_mapping rcm ON rcm.roadmap_id = r.id
     JOIN courses c ON c.id = rcm.course_id
@@ -181,7 +178,7 @@ export const getRoadmapDetailsQuery = async (roadmapId) => {
     LEFT JOIN course_tags ct ON ct.course_id = c.id
     LEFT JOIN tags tag on ct.tag_id = tag.id
     LEFT JOIN course_reviews cr ON cr.course_id = c.id
-    LEFT JOIN user_enrolled_courses uec ON uec.roadmap_course_id = rcm.id
+    LEFT JOIN user_course_progress ucp ON ucp.roadmap_course_id = rcm.id
     WHERE r.id = ?
       AND r.is_active = 1
       AND c.is_active = 1
@@ -198,10 +195,7 @@ export const getRoadmapDetailsQuery = async (roadmapId) => {
 };
 
 export const getAllRoadmapsAvailableForUserToEnroll = async (orgId) => {
-  logger.debug(
-    orgId,
-    `data being received: [getAllRoadmapsAvailableForUserToEnroll]`
-  );
+  logger.debug(orgId, `data being received: [getAllRoadmapsAvailableForUserToEnroll]`);
 
   const queryString = `
     SELECT r.id AS roadmapId, r.roadmap_name AS roadmapName FROM org_roadmap_mapping orm
@@ -212,10 +206,7 @@ export const getAllRoadmapsAvailableForUserToEnroll = async (orgId) => {
   try {
     return await query(queryString, [orgId]);
   } catch (error) {
-    logger.error(
-      error,
-      `error being received: [getAllRoadmapsAvailableForUserToEnroll/error]`
-    );
+    logger.error(error, `error being received: [getAllRoadmapsAvailableForUserToEnroll/error]`);
     throw error;
   }
 };
@@ -276,10 +267,7 @@ export const getCourseLearningsQuery = async (courseId) => {
     const result = await query(queryString, [courseId]);
     return result;
   } catch (error) {
-    logger.error(
-      error,
-      `error being received: [getCourseLearningsQuery/error]`
-    );
+    logger.error(error, `error being received: [getCourseLearningsQuery/error]`);
     throw error;
   }
 };
@@ -331,9 +319,19 @@ export const getCourseModulesQuery = async (courseId) => {
       ch.id AS chapterId,
       ch.title AS chapterTitle,
       ch.content_type as contentType,
-      ch.content_duration AS chapterDuration
+      ch.content_duration AS chapterDuration,
+      qm.id as quizMappingId,
+      q.title as quizTitle,
+      q.description as quizDescription,
+      pm.id as projectMappingId,
+      p.title as projectTitle,
+      p.description as projectDescription
     FROM sections s
     JOIN chapters ch ON ch.section_id = s.id
+    LEFT JOIN quiz_mapping qm ON ch.content_type = 'quiz' AND ch.content_ref_id = qm.id
+    LEFT JOIN quizzes q ON ch.content_type = 'quiz' AND qm.quiz_id = q.id
+    LEFT JOIN projects_mapping pm ON ch.content_type = 'project' AND ch.content_ref_id = pm.id
+    LEFT JOIN projects p ON ch.content_type = 'project' AND pm.project_id = p.id
     WHERE s.course_id = ? AND s.is_active = 1 AND ch.is_active = 1
     GROUP BY s.module_week, s.id, ch.id
     ORDER BY s.module_week, s.display_order, ch.display_order;`;
@@ -348,6 +346,776 @@ export const getCourseModulesQuery = async (courseId) => {
     };
   } catch (error) {
     logger.error(error, `error being received: [getCourseModulesQuery/error]`);
+    throw error;
+  }
+};
+
+export const getAllRoadmapsEnrolledByUserQuery = async (userId) => {
+  logger.debug(userId, `data being received: [getAllRoadmapsEnrolledByUserQuery]`);
+
+  const queryString = `
+    SELECT r.id AS roadmapId, r.roadmap_name AS roadmapName, r.roadmap_description AS roadmapDescription 
+    FROM user_enrolled_roadmaps uer
+    INNER JOIN roadmaps r ON uer.roadmap_id = r.id
+    WHERE uer.user_id = ? AND r.is_active = 1;`;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getAllRoadmapsEnrolledByUserQuery/error]`);
+    throw error;
+  }
+};
+
+export const checkUserOrgMultipleRoadmapsEnrollmentQuery = async (userId) => {
+  logger.debug(userId, `data being received: [checkUserOrgMultipleRoadmapsEnrollmentQuery]`);
+
+  const queryString = `
+    SELECT oec.allow_multiple_roadmaps AS allowMultipleRoadmaps
+    FROM users u
+    INNER JOIN organizations o ON u.org_id = o.id
+    INNER JOIN org_extra_configs oec ON o.id = oec.org_id
+    WHERE u.id = ?;`;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result.length ? result[0].allowMultipleRoadmaps : false;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [checkUserOrgMultipleRoadmapsEnrollmentQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const getAllCoursesMappedUnderRoadmapQuery = async (roadmapId, conn) => {
+  logger.debug(roadmapId, `data being received: [getAllCoursesMappedUnderRoadmapQuery]`);
+  const queryString = `SELECT rcm.id AS roadmapCourseId,
+            r.roadmap_name AS roadmapName,
+            rcm.roadmap_id AS roadmapId,
+            rcm.course_id AS courseId,
+            rcm.is_mandatory_to_proceed AS isMandatory,
+            rcm.weekly_unlock AS weeklyUnlock,
+            rcm.order AS courseOrder,
+            rcm.prerequisite_course_id AS preRequisiteCourseId
+    FROM roadmap_courses_mapping rcm
+    INNER JOIN roadmaps r ON rcm.roadmap_id = r.id
+    INNER JOIN courses c ON rcm.course_id = c.id
+    INNER JOIN tutors t ON c.tutor_id = t.id
+    WHERE rcm.roadmap_id = ? AND rcm.is_active = 1 AND c.is_active = 1 ORDER By rcm.order;`;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [roadmapId]);
+    }
+    return await query(queryString, [roadmapId]);
+  } catch (error) {
+    logger.error(error, `error being received: [getAllCoursesMappedUnderRoadmapQuery/error]`);
+    throw error;
+  }
+};
+
+export const checkIfCourseIsAlreadyEnrolledToCourseQuery = async (
+  userId,
+  roadmapCourseId,
+  conn
+) => {
+  const queryString = `SELECT ucp.id AS userProgressId
+    FROM user_course_progress ucp
+    WHERE ucp.user_id = ? AND ucp.roadmap_course_id = ?;`;
+  try {
+    if (conn) {
+      const result = await queryWithConn(conn, queryString, [userId, roadmapCourseId]);
+      return result.length > 0;
+    }
+    const result = await query(queryString, [userId, roadmapCourseId]);
+    return result.length > 0;
+  } catch (error) {
+    logger.error(error, `[checkIfCourseIsAlreadyEnrolledToCourseQuery]`);
+    throw error;
+  }
+};
+
+export const insertUserCourseProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  totalModules,
+  userRoadmapId,
+  conn
+) => {
+  const queryString = `INSERT INTO user_course_progress (user_id, roadmap_course_id, course_id, user_enrolled_roadmap_id, total_modules, completed_modules, progress_percent)
+    VALUES (?, ?, ?, ?, ?, 0, 0)
+    ON DUPLICATE KEY UPDATE total_modules = ?, updated_at = NOW();`;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [
+        userId,
+        roadmapCourseId,
+        courseId,
+        userRoadmapId,
+        totalModules,
+        totalModules,
+      ]);
+    }
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      userRoadmapId,
+      totalModules,
+      totalModules,
+    ]);
+  } catch (error) {
+    logger.error(error, `[insertUserCourseProgressQuery]`);
+    throw error;
+  }
+};
+
+export const getAllSectionsUnderCourseQuery = async (courseId, conn) => {
+  const queryString = `SELECT id AS sectionId, title AS sectionTitle, description AS sectionDescription, display_order AS sectionOrder,
+    module_week AS moduleWeek
+  FROM sections WHERE course_id = ? AND is_active = 1 ORDER BY display_order;`;
+
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [courseId]);
+    }
+    return await query(queryString, [courseId]);
+  } catch (error) {
+    logger.error(error, `[getAllSectionsUnderCourseQuery]`);
+    throw error;
+  }
+};
+
+export const getAllChaptersUnderSectionQuery = async (sectionId, conn) => {
+  const queryString = `SELECT id AS chapterId, title AS chapterTitle, content_type AS contentType, content_duration AS chapterDuration,  content_ref_id as contentRefId, display_order AS chapterOrder
+    FROM chapters WHERE section_id = ? AND is_active = 1 ORDER BY display_order;`;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [sectionId]);
+    }
+    return await query(queryString, [sectionId]);
+  } catch (error) {
+    logger.error(error, `[getAllChaptersUnderSectionQuery]`);
+    throw error;
+  }
+};
+
+export const insertIntoUserSectionProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  sectionId,
+  isUnlocked,
+  totalChapters,
+  userCourseProgressId,
+  moduleWeek,
+  conn
+) => {
+  logger.debug(
+    userId,
+    `data being received: [insertIntoUserSectionProgressQuery
+]`
+  );
+  const queryString = `
+    INSERT INTO user_section_progress (
+      user_id, roadmap_course_id, course_id, user_enrolled_course_progress_id, section_id, module_week, total_chapters, is_unlocked, unlocked_at, is_completed
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, IF(? = 1, NOW(), NULL), 0
+    )
+    ON DUPLICATE KEY UPDATE
+      is_unlocked = VALUES(is_unlocked),
+      updated_at = NOW();
+  `;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [
+        userId,
+        roadmapCourseId,
+        courseId,
+        userCourseProgressId,
+        sectionId,
+        moduleWeek,
+        totalChapters,
+        isUnlocked,
+        isUnlocked,
+      ]);
+    }
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      userCourseProgressId,
+      sectionId,
+      moduleWeek,
+      totalChapters,
+      isUnlocked,
+      isUnlocked,
+    ]);
+  } catch (error) {
+    logger.error(error, `[insertIntoUserSectionProgressQuery]`);
+    throw error;
+  }
+};
+
+export const insertIntoUserChapterProgressQuery = async (
+  userId,
+  roadmapCourseId,
+  courseId,
+  sectionId,
+  chapterId,
+  isUnlocked,
+  totalDuration,
+  contentType = "video",
+  quizMappingId = null,
+  projectMappingId = null,
+  sectionProgressId,
+  conn
+) => {
+  logger.debug(
+    chapterId,
+    isUnlocked,
+    `data being received: [insertIntoUserChapterProgressQuery/data]`
+  );
+  const queryString = `
+    INSERT INTO user_chapter_progress (
+      user_id, roadmap_course_id, course_id, section_id, user_enrolled_section_progress_id, chapter_id, total_duration, is_unlocked, unlocked_at, content_type, content_ref_id, is_completed
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, IF(? = 1, NOW(), NULL), ?, ?, 0
+    );
+  `;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [
+        userId,
+        roadmapCourseId,
+        courseId,
+        sectionId,
+        sectionProgressId,
+        chapterId,
+        totalDuration,
+        isUnlocked,
+        isUnlocked, // for unlocked_at IF(? = 1, NOW(), NULL)
+        contentType,
+        contentType === "quiz" ? quizMappingId : projectMappingId,
+      ]);
+    }
+    return await query(queryString, [
+      userId,
+      roadmapCourseId,
+      courseId,
+      sectionId,
+      sectionProgressId,
+      chapterId,
+      totalDuration,
+      isUnlocked,
+      isUnlocked, // for unlocked_at IF(? = 1, NOW(), NULL)
+      contentType,
+      contentType === "quiz" ? quizMappingId : projectMappingId,
+    ]);
+  } catch (error) {
+    logger.error(error, `[insertIntoUserChapterProgressQuery]`);
+    throw error;
+  }
+};
+
+export const getQuizDetailsQuery = async (quizMappingId) => {
+  logger.debug(quizMappingId, `data being received: [getQuizDetailsQuery]`);
+
+  const queryString = `
+    SELECT qm.id as quizMappingId, q.id AS quizId, q.title AS quizTitle, q.description AS quizDescription, q.is_active AS isActive
+    FROM quiz_mapping qm
+    INNER JOIN quizzes q ON qm.quiz_id = q.id
+    WHERE qm.id = ? AND qm.is_active = 1;`;
+
+  try {
+    const result = await query(queryString, [quizMappingId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getQuizDetailsQuery/error]`);
+    throw error;
+  }
+};
+
+export const getProjectDetailsQuery = async (projectMappingId) => {
+  logger.debug(projectMappingId, `data being received: [getProjectDetailsQuery]`);
+
+  const queryString = `
+    SELECT pm.id as projectMappingId, p.id AS projectId, p.title AS projectTitle, p.description AS projectDescription, p.is_active AS isActive
+    FROM projects_mapping pm
+    INNER JOIN projects p ON pm.project_id = p.id
+    WHERE pm.id = ?;`;
+
+  try {
+    const result = await query(queryString, [projectMappingId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getProjectDetailsQuery/error]`);
+    throw error;
+  }
+};
+
+export const getPrerequisiteCourseQuery = async (roadmapCourseId) => {
+  logger.debug(roadmapCourseId, `data being received: [getPrerequisiteCourseQuery]`);
+
+  const queryString = `
+    SELECT rcm.prerequisite_course_id AS prerequisiteCourseId,
+       rcm.roadmap_id             AS roadmapId,
+       rcm.weekly_unlock          AS isWeeklyUnlock
+    FROM roadmap_courses_mapping rcm
+            INNER JOIN courses c ON rcm.prerequisite_course_id = c.id
+    WHERE rcm.id = ?;`;
+
+  try {
+    const result = await query(queryString, [roadmapCourseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getPrerequisiteCourseQuery/error]`);
+    throw error;
+  }
+};
+
+export const getAllModuleDetailsQuery = async (roadmapCourseId, userId, conn) => {
+  logger.debug(roadmapCourseId, userId, `data being received: [getAllModuleDetailsQuery]`);
+
+  const queryString = `SELECT ucp.course_id as courseId,
+       usp.section_id   as sectionId,
+       usp.user_enrolled_course_progress_id as userEnrolledCourseId,
+       usp.module_week  as moduleWeek,
+       usp.is_unlocked  as isSectionUnlocked,
+       usp.is_completed as isSectionCompleted,
+       usp.completed_at as sectionCompletedAt,
+       usp.unlocked_at  as sectionUnlockedAt
+  FROM user_course_progress ucp
+          INNER JOIN user_section_progress usp ON ucp.id = usp.user_enrolled_course_progress_id
+  WHERE ucp.roadmap_course_id = ? AND ucp.user_id = ? ORDER BY usp.section_id;`;
+
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [roadmapCourseId, userId]);
+    }
+    return await query(queryString, [roadmapCourseId, userId]);
+  } catch (error) {
+    logger.error(error, `error being received: [getAllModuleDetailsQuery/error]`);
+    throw error;
+  }
+};
+
+export const getPreviousSectionStatusQuery = async (userId, roadmapCourseId, sectionId, conn) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    sectionId,
+    `data being received: [getPreviousSectionStatusQuery]`
+  );
+
+  const queryString = `SELECT section_id AS sectionId, is_completed AS isCompleted, is_unlocked AS isUnlocked, unlocked_at AS unlockedAt, completed_at AS completedAt
+    FROM user_section_progress
+    WHERE user_id = ?
+    AND roadmap_course_id = ?
+    AND section_id < ?;`;
+
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [userId, roadmapCourseId, sectionId]);
+    }
+    return await query(queryString, [userId, roadmapCourseId, sectionId]);
+  } catch (error) {
+    logger.error(error, `error being received: [getPreviousSectionStatusQuery/error]`);
+    throw error;
+  }
+};
+
+export const getAllChaptersUnderSectionForUserQuery = async (
+  userId,
+  roadmapCourseId,
+  sectionId,
+  conn
+) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    sectionId,
+    `data being received: [getAllChaptersUnderSectionForUserQuery]`
+  );
+
+  const queryString = `SELECT chapter_id AS chapterId, is_unlocked AS isChapterUnlocked, is_completed AS isChapterCompleted
+    FROM user_chapter_progress
+    WHERE user_id = ? AND roadmap_course_id = ? AND section_id = ?;`;
+
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [userId, roadmapCourseId, sectionId]);
+    }
+    return await query(queryString, [userId, roadmapCourseId, sectionId]);
+  } catch (error) {
+    logger.error(error, `error being received: [getAllChaptersUnderSectionForUserQuery/error]`);
+    throw error;
+  }
+};
+
+export const markUnlockSectionToUserQuery = async ({
+  userId,
+  roadmapCourseId,
+  sectionId,
+  isUnlocked,
+  conn,
+}) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    sectionId,
+    isUnlocked,
+    `data being received: [markUnlockSectionToUserQuery]`
+  );
+  const queryString = `
+    UPDATE user_section_progress
+    SET is_unlocked = ?, updated_at = NOW(), unlocked_at = NOW()
+    WHERE user_id = ? AND roadmap_course_id = ? AND section_id = ?;`;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [
+        isUnlocked,
+        userId,
+        roadmapCourseId,
+        sectionId,
+      ]);
+    }
+    return await query(queryString, [isUnlocked, userId, roadmapCourseId, sectionId]);
+  } catch (error) {
+    logger.error(error, `[markUnlockSectionToUserQuery]`);
+    throw error;
+  }
+};
+
+export const markUnlockChapterToUserQuery = async ({
+  userId,
+  roadmapCourseId,
+  sectionId,
+  chapterId,
+  isUnlocked,
+  conn,
+}) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    sectionId,
+    chapterId,
+    isUnlocked,
+    `data being received: [markUnlockChapterToUserQuery]`
+  );
+  const queryString = `
+    UPDATE user_chapter_progress
+    SET is_unlocked = ?, updated_at = NOW(), unlocked_at = NOW()
+    WHERE user_id = ? AND roadmap_course_id = ? AND section_id = ? AND chapter_id = ?;`;
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [
+        isUnlocked,
+        userId,
+        roadmapCourseId,
+        sectionId,
+        chapterId,
+      ]);
+    }
+    return await query(queryString, [isUnlocked, userId, roadmapCourseId, sectionId, chapterId]);
+  } catch (error) {
+    logger.error(error, `[markUnlockChapterToUserQuery]`);
+    throw error;
+  }
+};
+
+export const getPreviousChapterStatusQuery = async (userId, roadmapCourseId, chapterId, conn) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    chapterId,
+    `data being received: [getPreviousChapterStatusQuery]`
+  );
+
+  const queryString = `SELECT chapter_id AS chapterId, is_completed AS isChapterCompleted, is_unlocked AS isChapterUnlocked
+    FROM user_chapter_progress
+    WHERE user_id = ?
+    AND roadmap_course_id = ?
+    AND chapter_id < ?;`;
+
+  try {
+    if (conn) {
+      return await queryWithConn(conn, queryString, [userId, roadmapCourseId, chapterId]);
+    }
+    return await query(queryString, [userId, roadmapCourseId, chapterId]);
+  } catch (error) {
+    logger.error(error, `error being received: [getPreviousChapterStatusQuery/error]`);
+    throw error;
+  }
+};
+
+export const getCourseMappingDetailsQuery = async (roadmapCourseId, conn) => {
+  logger.debug(roadmapCourseId, `data being received: [getCourseMappingDetailsQuery]`);
+
+  const queryString = `
+    SELECT rcm.id AS roadmapCourseId, rcm.roadmap_id AS roadmapId, rcm.course_id AS courseId,
+           rcm.is_mandatory_to_proceed AS isMandatory, rcm.weekly_unlock AS isWeeklyUnlock,
+           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
+    FROM roadmap_courses_mapping rcm
+    WHERE rcm.id = ?;`;
+
+  try {
+    if (conn) {
+      const result = await queryWithConn(conn, queryString, [roadmapCourseId]);
+      return result.length ? result[0] : null;
+    }
+    const result = await query(queryString, [roadmapCourseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getCourseMappingDetailsQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserCourseCompletionStatusQuery = async (userId, roadmapId, courseId, conn) => {
+  logger.debug(userId, roadmapId, `data being received: [getUserCourseCompletionStatusQuery]`);
+
+  const queryString = `
+    SELECT ucp.total_modules AS totalModules,
+           ucp.completed_modules AS completedModules, ucp.progress_percent AS progressPercent, ucp.is_completed AS isCompleted
+    FROM user_course_progress ucp
+    INNER JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
+    WHERE ucp.user_id = ? AND rcm.roadmap_id = ? AND rcm.course_id = ?;`;
+
+  try {
+    if (conn) {
+      const result = await queryWithConn(conn, queryString, [userId, roadmapId, courseId]);
+      return result.length ? result[0] : null;
+    }
+    const result = await query(queryString, [userId, roadmapId, courseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserCourseCompletionStatusQuery/error]`);
+    throw error;
+  }
+};
+
+export const userCurrentRoadmapCourseStatusQuery = async ({
+  userId,
+  roadmapId,
+  roadmapCourseId = null,
+  courseId = null,
+}) => {
+  logger.debug(
+    userId,
+    roadmapId,
+    roadmapCourseId,
+    courseId,
+    `data being received: [userCurrentRoadmapCourseStatusQuery]`
+  );
+  let queryString = `
+    SELECT ucp.id AS userCourseProgressId, ucp.total_modules AS totalModules,
+           ucp.completed_modules AS completedModules, ucp.progress_percent AS progressPercent,
+          ucp.created_at AS enrolledAt,
+           ucp.is_completed AS isCompleted, ucp.completed_at AS completedAt,
+           rcm.prerequisite_course_id AS prerequisiteCourseId, rcm.weekly_unlock AS isWeeklyUnlock,
+           rcm.order AS courseOrder, rcm.is_active AS isActive,
+            ucc.id AS userCourseCertificateId, ucc.certificate_url AS certificateUrl,
+           c.id AS courseId, c.title AS courseTitle, c.thumbnail_url AS courseThumbnailUrl,
+           c.level AS courseLevel, c.description AS courseDescription, c.tutor_id AS tutorId
+    FROM user_course_progress ucp
+    INNER JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
+    INNER JOIN courses c ON rcm.course_id = c.id
+    LEFT JOIN user_course_certificates ucc ON ucp.is_completed = 1 AND ucp.user_course_certificate_id = ucc.id
+    WHERE ucp.user_id = ? AND rcm.roadmap_id = ?`;
+
+  if (roadmapCourseId) {
+    queryString += ` AND rcm.id = ?;`;
+  } else if (courseId) {
+    queryString += ` AND c.id = ?;`;
+  }
+  try {
+    const result = await query(queryString, [userId, roadmapId, roadmapCourseId || courseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [userCurrentRoadmapCourseStatusQuery/error]`);
+    throw error;
+  }
+};
+
+export const getCurrentRoadmapStatusQuery = async (userId, roadmapId) => {
+  logger.debug(userId, roadmapId, `data being received: [getCurrentRoadmapStatusQuery]`);
+
+  const queryString = `
+    SELECT uer.id AS userEnrolledRoadmapId, uer.roadmap_id AS roadmapId, uer.enrolled_at AS enrolledAt
+    FROM user_enrolled_roadmaps uer
+    WHERE uer.user_id = ? AND uer.roadmap_id = ?;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getCurrentRoadmapStatusQuery/error]`);
+    throw error;
+  }
+};
+
+export const getRoadmapCourseMappingDetailsUnderRoadmapQuery = async (
+  roadmapCourseId,
+  roadmapId
+) => {
+  logger.debug(
+    roadmapCourseId,
+    roadmapId,
+    `data being received: [getRoadmapCourseMappingDetailsUnderRoadmapQuery]`
+  );
+
+  const queryString = `
+    SELECT rcm.id AS roadmapCourseId, rcm.roadmap_id AS roadmapId, rcm.course_id AS courseId,
+           rcm.is_mandatory_to_proceed AS isMandatory, rcm.weekly_unlock AS isWeeklyUnlock,
+           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
+    FROM roadmap_courses_mapping rcm
+    WHERE rcm.id = ? AND rcm.roadmap_id = ?;`;
+
+  try {
+    const result = await query(queryString, [roadmapCourseId, roadmapId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getRoadmapCourseMappingDetailsUnderRoadmapQuery/error]`
+    );
+    throw error;
+  }
+};
+
+export const getTotalSectionsUnderRoadmapCourseQuery = async (courseId) => {
+  logger.debug(courseId, `data being received: [getTotalSectionsUnderRoadmapCourseQuery]`);
+
+  const queryString = `
+    SELECT COUNT(*) AS totalSections,
+       COUNT(DISTINCT s.module_week) AS totalModules,
+       c.title AS courseTitle,
+       c.description AS courseDescription,
+       c.thumbnail_url AS courseThumbnailUrl
+    FROM sections s
+    INNER JOIN courses c ON s.course_id = c.id
+    WHERE s.course_id = ? AND s.is_active = 1;`;
+
+  try {
+    const result = await query(queryString, [courseId]);
+    return result.length ? result[0] : 0;
+  } catch (error) {
+    logger.error(error, `error being received: [getTotalSectionsUnderRoadmapCourseQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserRoadmapCourseOverallSummaryQuery = async (userId, roadmapCourseId) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    `data being received: [getUserRoadmapCourseOverallSummaryQuery]`
+  );
+
+  const queryString = `
+    SELECT usp.module_week                         AS moduleWeek,
+       CAST(SUM(CASE WHEN ucp.content_type = 'video' THEN 1 ELSE 0 END) AS UNSIGNED)                             AS totalVideos,
+       CAST(SUM(CASE
+               WHEN ucp.content_type = 'video' AND ucp.is_completed = 1 AND ucp.total_duration = ucp.watched_duration
+                   THEN 1
+               ELSE 0 END) AS UNSIGNED)  AS completedVideos,
+       CAST(SUM(CASE WHEN ucp.content_type = 'document' THEN 1 ELSE 0 END) AS UNSIGNED)                          AS totalReadings,
+       CAST(SUM(CASE WHEN ucp.content_type = 'document' AND ucp.is_completed = 1 THEN 1 ELSE 0 END) AS UNSIGNED) AS completedReadings,
+       CAST(SUM(CASE WHEN ucp.content_type = 'quiz' THEN 1 ELSE 0 END) AS UNSIGNED)                              AS totalQuizzes,
+       CAST(SUM(CASE WHEN ucp.content_type = 'quiz' AND ucp.is_completed = 1 THEN 1 ELSE 0 END) AS UNSIGNED)     AS completedQuizzes,
+       CAST(ROUND(
+               100 * AVG(
+                       CASE
+                           WHEN ucp.content_type = 'video' THEN GREATEST(
+                                   LEAST(ucp.watched_duration / NULLIF(ucp.total_duration, 0), 1),
+                                   0
+                                                                )
+                           ELSE CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END
+                           END
+                     ),
+               0
+      ) AS UNSIGNED) AS moduleCompletionPercent,
+       CASE
+           WHEN SUM(CASE WHEN ucp.is_unlocked = 1 THEN 1 ELSE 0 END) = 0 THEN 'locked'
+           ELSE CASE
+                    WHEN SUM(CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END) = COUNT(DISTINCT ucp.id) THEN 'completed'
+                    ELSE 'in-progress' END END AS status
+    FROM user_chapter_progress ucp
+            INNER JOIN user_section_progress usp ON ucp.user_enrolled_section_progress_id = usp.id
+    WHERE ucp.user_id = ?
+      AND ucp.roadmap_course_id = ?
+    GROUP BY usp.module_week
+    ORDER BY usp.module_week;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserRoadmapCourseOverallSummaryQuery/error]`);
+    throw error;
+  }
+};
+
+export const getModuleLevelCourseProgressQueryWithChapters = async (
+  userId,
+  roadmapCourseId,
+  moduleWeek
+) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    moduleWeek,
+    `data being received: [getModuleLevelCourseProgressQueryWithChapters]`
+  );
+
+  const queryString = `
+    SELECT usp.module_week      AS moduleWeek,
+       usp.section_id       AS courseSectionId,
+       s.title              AS sectionTitle,
+       s.description        AS sectionDescription,
+       usp.total_chapters   AS sectionTotalChapters,
+       ucp.chapter_id       AS chapterId,
+       ucp.content_type     AS contentType,
+       c.title              AS chapterTitle,
+       c.description        AS chapterDescription,
+       ucp.watched_duration AS watchedDuration,
+       ucp.total_duration   AS totalDuration,
+       ucp.is_unlocked      AS isChapterUnlocked,
+       ucp.unlocked_at      AS unlockedAt,
+       ucp.is_completed     AS isCompleted,
+       qm.xp_points         AS quizXpPoints,
+       pm.xp_points         AS projectXpPoints,
+       CAST(ROUND(
+               100 * GREATEST(
+                       CASE
+                           WHEN ucp.content_type = 'video' THEN GREATEST(
+                                   LEAST(ucp.watched_duration / NULLIF(ucp.total_duration, 0), 1),
+                                   0)
+                           ELSE CASE WHEN ucp.is_completed = 1 THEN 1 ELSE 0 END
+                           END, 0)) AS UNSIGNED)                    AS completionPercent
+      FROM user_chapter_progress ucp
+              INNER JOIN user_section_progress usp ON ucp.user_enrolled_section_progress_id = usp.id
+              INNER JOIN chapters c ON ucp.chapter_id = c.id
+              INNER JOIN sections s ON ucp.section_id = s.id
+              LEFT JOIN quiz_mapping qm ON ucp.content_type = 'quiz' AND ucp.content_ref_id = qm.id
+              LEFT JOIN projects_mapping pm ON ucp.content_type = 'project' AND ucp.content_ref_id = pm.id
+      WHERE ucp.user_id = ?
+        AND ucp.roadmap_course_id = ?
+        AND usp.module_week = ?
+      ORDER BY usp.module_week, ucp.chapter_id;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId, moduleWeek]);
+    return result;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getModuleLevelCourseProgressQueryWithChapters/error]`
+    );
     throw error;
   }
 };

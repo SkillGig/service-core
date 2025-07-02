@@ -7,45 +7,37 @@ import {
   enrollUserToRoadmap,
   userConfigController,
   getRoadmapDetails,
-  getCourseDetails,
+  unlockCourseForTheUserController,
+  unlockModuleUnderCourseController,
+  unlockSectionUnderCourseController,
+  unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
+import UserCourseRoutes from "./user-course.routes.js";
 
 const router = Router();
 
-router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
+router.use("/streaks", UserStreaksRoutes);
 
-router.use("/config", authenticateUserTokenMiddleware, userConfigController);
+router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.post(
-  "/enroll-roadmap",
-  authenticateUserTokenMiddleware,
-  enrollUserToRoadmap
-);
+router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 
-router.get(
-  "/roadmap-details",
-  authenticateUserTokenMiddleware,
-  getRoadmapDetails
-);
+router.post("/enroll-course", authenticateUserTokenMiddleware, unlockCourseForTheUserController);
 
-router.get(
-  "/course-details",
-  authenticateUserTokenMiddleware,
-  getCourseDetails
-);
+router.post("/unlock-module", authenticateUserTokenMiddleware, unlockModuleUnderCourseController);
 
-router.get(
-  "/roadmaps",
-  authenticateUserTokenMiddleware,
-  fetchUserSelectedRoadmaps
-);
+router.post("/unlock-section", authenticateUserTokenMiddleware, unlockSectionUnderCourseController);
 
-router.get(
-  "/notifications/all",
-  authenticateUserTokenMiddleware,
-  getAllUserNotifications
-);
+router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnderCourseController);
+
+router.get("/roadmap-details", authenticateUserTokenMiddleware, getRoadmapDetails);
+
+router.get("/roadmaps", authenticateUserTokenMiddleware, fetchUserSelectedRoadmaps);
+
+router.use("/roadmap/roadmap-course", UserCourseRoutes);
+
+router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
 
 router.patch(
   "/notifications/mark-as-seen",
