@@ -1119,3 +1119,53 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
     throw error;
   }
 };
+
+export const getUserNotesQuery = async (userId, roadmapCourseId, moduleWeek, sectionId, chapterId) => {
+  let queryString = `SELECT id AS noteId, user_id AS userId, roadmap_course_id AS roadmapCourseId, module_week AS moduleWeek, section_id AS sectionId, chapter_id AS chapterId, note_content AS noteContent, created_at AS createdAt, updated_at AS updatedAt FROM user_course_notes WHERE user_id = ?`;
+  const params = [userId];
+  if (roadmapCourseId) {
+    queryString += ' AND roadmap_course_id = ?';
+    params.push(roadmapCourseId);
+  }
+  if (moduleWeek) {
+    queryString += ' AND module_week = ?';
+    params.push(moduleWeek);
+  }
+  if (sectionId) {
+    queryString += ' AND section_id = ?';
+    params.push(sectionId);
+  }
+  if (chapterId) {
+    queryString += ' AND chapter_id = ?';
+    params.push(chapterId);
+  }
+  queryString += ' ORDER BY updated_at DESC';
+  try {
+    return await query(queryString, params);
+  } catch (error) {
+    logger.error(error, '[getUserNotesQuery]');
+    throw error;
+  }
+};
+
+export const addUserNoteQuery = async (userId, roadmapCourseId, moduleWeek, sectionId, chapterId, noteContent) => {
+  const queryString = `INSERT INTO user_course_notes (user_id, roadmap_course_id, module_week, section_id, chapter_id, note_content) VALUES (?, ?, ?, ?, ?, ?)`;
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId, moduleWeek, sectionId, chapterId, noteContent]);
+    return result.insertId;
+  } catch (error) {
+    logger.error(error, '[addUserNoteQuery]');
+    throw error;
+  }
+};
+
+export const editUserNoteQuery = async (userId, noteId, noteContent) => {
+  const queryString = `UPDATE user_course_notes SET note_content = ?, updated_at = NOW() WHERE id = ? AND user_id = ?`;
+  try {
+    await query(queryString, [noteContent, noteId, userId]);
+    return true;
+  } catch (error) {
+    logger.error(error, '[editUserNoteQuery]');
+    throw error;
+  }
+};
