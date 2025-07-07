@@ -643,7 +643,7 @@ export const getProjectDetailsQuery = async (projectMappingId) => {
   logger.debug(projectMappingId, `data being received: [getProjectDetailsQuery]`);
 
   const queryString = `
-    SELECT pm.id as projectMappingId, p.id AS projectId, p.title AS projectTitle, p.description AS projectDescription, p.is_active AS isActive
+    SELECT pm.id as projectMappingId, p.id AS projectId, p.title AS projectTitle, p.description AS projectDescription, p.is_active AS isActive, p.instructions AS projectInstructions, p.required_format AS requiredFormat
     FROM projects_mapping pm
     INNER JOIN projects p ON pm.project_id = p.id
     WHERE pm.id = ?;`;
@@ -1087,8 +1087,11 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
        ucp.is_unlocked      AS isChapterUnlocked,
        ucp.unlocked_at      AS unlockedAt,
        ucp.is_completed     AS isCompleted,
+       ucp.content_ref_id   AS contentRefId,
        qm.xp_points         AS quizXpPoints,
        pm.xp_points         AS projectXpPoints,
+       ups.id               AS latestSubmissionId,
+       ups.status           AS projectSubmissionStatus,
        CAST(ROUND(
                100 * GREATEST(
                        CASE
@@ -1103,6 +1106,7 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
               INNER JOIN sections s ON ucp.section_id = s.id
               LEFT JOIN quiz_mapping qm ON ucp.content_type = 'quiz' AND ucp.content_ref_id = qm.id
               LEFT JOIN projects_mapping pm ON ucp.content_type = 'project' AND ucp.content_ref_id = pm.id
+              LEFT JOIN user_project_submissions ups ON ucp.content_type = 'project' AND ucp.content_ref_id = ups.course_project_task_id
       WHERE ucp.user_id = ?
         AND ucp.roadmap_course_id = ?
         AND usp.module_week = ?
@@ -1120,41 +1124,61 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
   }
 };
 
-export const getUserNotesQuery = async (userId, roadmapCourseId, moduleWeek, sectionId, chapterId) => {
-  let queryString = `SELECT id AS noteId, user_id AS userId, roadmap_course_id AS roadmapCourseId, module_week AS moduleWeek, section_id AS sectionId, chapter_id AS chapterId, note_content AS noteContent, created_at AS createdAt, updated_at AS updatedAt FROM user_course_notes WHERE user_id = ?`;
+export const getUserNotesQuery = async (
+  userId,
+  roadmapCourseId,
+  moduleWeek,
+  sectionId,
+  chapterId
+) => {
+  let queryString = `SELECT id AS noteId, roadmap_course_id AS roadmapCourseId, module_week AS moduleWeek, section_id AS sectionId, chapter_id AS chapterId, note_content AS noteContent, created_at AS createdAt, updated_at AS updatedAt FROM user_course_notes WHERE user_id = ?`;
   const params = [userId];
   if (roadmapCourseId) {
-    queryString += ' AND roadmap_course_id = ?';
+    queryString += " AND roadmap_course_id = ?";
     params.push(roadmapCourseId);
   }
   if (moduleWeek) {
-    queryString += ' AND module_week = ?';
+    queryString += " AND module_week = ?";
     params.push(moduleWeek);
   }
   if (sectionId) {
-    queryString += ' AND section_id = ?';
+    queryString += " AND section_id = ?";
     params.push(sectionId);
   }
   if (chapterId) {
-    queryString += ' AND chapter_id = ?';
+    queryString += " AND chapter_id = ?";
     params.push(chapterId);
   }
-  queryString += ' ORDER BY updated_at DESC';
+  queryString += " ORDER BY updated_at DESC";
   try {
     return await query(queryString, params);
   } catch (error) {
-    logger.error(error, '[getUserNotesQuery]');
+    logger.error(error, "[getUserNotesQuery]");
     throw error;
   }
 };
 
-export const addUserNoteQuery = async (userId, roadmapCourseId, moduleWeek, sectionId, chapterId, noteContent) => {
+export const addUserNoteQuery = async (
+  userId,
+  roadmapCourseId,
+  moduleWeek,
+  sectionId,
+  chapterId,
+  noteContent
+) => {
   const queryString = `INSERT INTO user_course_notes (user_id, roadmap_course_id, module_week, section_id, chapter_id, note_content) VALUES (?, ?, ?, ?, ?, ?)`;
   try {
-    const result = await query(queryString, [userId, roadmapCourseId, moduleWeek, sectionId, chapterId, noteContent]);
+    const result = await query(queryString, [
+      userId,
+      roadmapCourseId,
+      moduleWeek,
+      sectionId,
+      chapterId,
+      noteContent,
+    ]);
     return result.insertId;
   } catch (error) {
-    logger.error(error, '[addUserNoteQuery]');
+    logger.error(error, "[addUserNoteQuery]");
     throw error;
   }
 };
@@ -1165,7 +1189,67 @@ export const editUserNoteQuery = async (userId, noteId, noteContent) => {
     await query(queryString, [noteContent, noteId, userId]);
     return true;
   } catch (error) {
-    logger.error(error, '[editUserNoteQuery]');
+    logger.error(error, "[editUserNoteQuery]");
     throw error;
   }
+};
+
+// Project submission queries
+export const getLatestProjectSubmissionQuery = async (userId, contentRefId) => {
+  const queryString = `SELECT id, status, attempt_number AS attemptNumber FROM user_project_submissions WHERE user_id = ? AND course_project_task_id = ? AND is_latest = 1 ORDER BY submitted_at DESC LIMIT 1`;
+  try {
+    const [result] = await query(queryString, [userId, contentRefId]);
+    return result || null;
+  } catch (error) {
+    logger.error(error, "[getLatestProjectSubmissionQuery]");
+    throw error;
+  }
+};
+
+export const submitProjectQuery = {
+  markPreviousNotLatest: async (submissionId) => {
+    const queryString = `UPDATE user_project_submissions SET is_latest = 0 WHERE id = ?`;
+    try {
+      await query(queryString, [submissionId]);
+    } catch (error) {
+      logger.error(error, "[markPreviousNotLatest]");
+      throw error;
+    }
+  },
+  insert: async ({
+    userId,
+    contentRefId,
+    attemptNumber,
+    githubUrl,
+    docUrl,
+    deployedUrl,
+    submissionComment,
+  }) => {
+    logger.debug(
+      userId,
+      contentRefId,
+      attemptNumber,
+      githubUrl,
+      docUrl,
+      deployedUrl,
+      submissionComment,
+      `data being received: [submitProjectQuery.insert]`
+    );
+    const queryString = `INSERT INTO user_project_submissions (user_id, course_project_task_id, attempt_number, github_url, doc_url, deployed_url, submission_comment, status, is_latest) VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted', 1);`;
+    try {
+      const result = await query(queryString, [
+        userId,
+        contentRefId,
+        attemptNumber,
+        githubUrl,
+        docUrl,
+        deployedUrl,
+        submissionComment,
+      ]);
+      return result.insertId;
+    } catch (error) {
+      logger.error(error, "[submitProjectQuery.insert]");
+      throw error;
+    }
+  },
 };

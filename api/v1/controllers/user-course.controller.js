@@ -19,6 +19,7 @@ import {
   getTutorDetailsQuery,
   userCurrentRoadmapCourseStatusQuery,
   getCourseMappingDetailsQuery,
+  getProjectDetailsQuery,
 } from "../services/user-common.query.js";
 
 export const getCourseDetails = async (req, res) => {
@@ -207,5 +208,31 @@ export const getUserCourseModuleDetailsController = async (req, res) => {
       },
       500
     );
+  }
+};
+
+export const getChapterLockedStatusQuery = async (
+  userId,
+  roadmapCourseId,
+  moduleWeek,
+  sectionId,
+  chapterId
+) => {
+  if (!userId || !roadmapCourseId || !moduleWeek || !sectionId || !chapterId) {
+    throw new Error("Invalid parameters for chapter locked status check");
+  }
+
+  try {
+    const chapterStatus = await getModuleLevelCourseProgressQueryWithChapters(
+      userId,
+      roadmapCourseId,
+      moduleWeek,
+      sectionId,
+      chapterId
+    );
+    return chapterStatus?.isChapterUnlocked || false;
+  } catch (error) {
+    logger.error(error, `error being received: [getChapterLockedStatusQuery]`);
+    throw new Error("Failed to fetch chapter locked status");
   }
 };

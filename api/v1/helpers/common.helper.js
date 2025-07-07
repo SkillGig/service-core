@@ -276,6 +276,8 @@ export const transformModuleDetails = (data) => {
       completionPercent: item.completionPercent,
       quizXpPoints: item.quizXpPoints || null,
       projectXpPoints: item.projectXpPoints || null,
+      latestSubmissionId: item.latestSubmissionId || null,
+      projectSubmissionStatus: item.projectSubmissionStatus || null,
     });
 
     // Find the most recently unlocked chapter
