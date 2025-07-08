@@ -277,6 +277,8 @@ export const transformModuleDetails = (data) => {
       quizXpPoints: item.quizXpPoints || null,
       projectXpPoints: item.projectXpPoints || null,
       latestSubmissionId: item.latestSubmissionId || null,
+      quizMappingId: item.quizMappingId || null,
+      projectMappingId: item.projectMappingId || null,
       projectSubmissionStatus: item.projectSubmissionStatus || null,
     });
 

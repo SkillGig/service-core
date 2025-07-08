@@ -1090,6 +1090,8 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
        ucp.content_ref_id   AS contentRefId,
        qm.xp_points         AS quizXpPoints,
        pm.xp_points         AS projectXpPoints,
+       qm.id                AS quizMappingId,
+       pm.id                AS projectMappingId,
        ups.id               AS latestSubmissionId,
        ups.status           AS projectSubmissionStatus,
        CAST(ROUND(
@@ -1252,4 +1254,34 @@ export const submitProjectQuery = {
       throw error;
     }
   },
+};
+
+export const getCurrentSectionWithModuleForUserOngoingCourseQuery = async (
+  userId,
+  roadmapCourseId
+) => {
+  logger.debug(
+    userId,
+    roadmapCourseId,
+    `data being received: [getCurrentSectionWithModuleForUserOngoingCourseQuery]`
+  );
+
+  const queryString = `
+    SELECT usp.section_id AS sectionId, usp.module_week AS moduleWeek, usp.is_unlocked AS isSectionUnlocked
+    FROM user_section_progress usp
+    INNER JOIN user_course_progress ucp ON usp.user_enrolled_course_progress_id = ucp.id
+    WHERE ucp.user_id = ? AND ucp.roadmap_course_id = ? AND usp.is_completed = 0
+    AND usp.is_unlocked = 1
+    ORDER BY usp.unlocked_at;`;
+
+  try {
+    const result = await query(queryString, [userId, roadmapCourseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(
+      error,
+      `error being received: [getCurrentSectionWithModuleForUserOngoingCourseQuery/error]`
+    );
+    throw error;
+  }
 };

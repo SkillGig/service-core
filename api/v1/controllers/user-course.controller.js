@@ -20,6 +20,7 @@ import {
   userCurrentRoadmapCourseStatusQuery,
   getCourseMappingDetailsQuery,
   getProjectDetailsQuery,
+  getCurrentSectionWithModuleForUserOngoingCourseQuery,
 } from "../services/user-common.query.js";
 
 export const getCourseDetails = async (req, res) => {
@@ -38,16 +39,25 @@ export const getCourseDetails = async (req, res) => {
     const courseId = courseIdInfo.courseId;
 
     // Fetch all course-related data in parallel
-    const [courseDetails, tutorDetails, tags, learnings, reviews, moduleData, userStatusOfCourse] =
-      await Promise.all([
-        getCourseDetailsQuery(courseId),
-        getTutorDetailsQuery(courseIdInfo.tutorId),
-        getCourseTagsQuery(courseId),
-        getCourseLearningsQuery(courseId),
-        getCourseReviewsQuery(courseId),
-        getCourseModulesQuery(courseId),
-        userCurrentRoadmapCourseStatusQuery({ userId, roadmapId, roadmapCourseId }),
-      ]);
+    const [
+      courseDetails,
+      tutorDetails,
+      tags,
+      learnings,
+      reviews,
+      moduleData,
+      userStatusOfCourse,
+      currentModuleDetails,
+    ] = await Promise.all([
+      getCourseDetailsQuery(courseId),
+      getTutorDetailsQuery(courseIdInfo.tutorId),
+      getCourseTagsQuery(courseId),
+      getCourseLearningsQuery(courseId),
+      getCourseReviewsQuery(courseId),
+      getCourseModulesQuery(courseId),
+      userCurrentRoadmapCourseStatusQuery({ userId, roadmapId, roadmapCourseId }),
+      getCurrentSectionWithModuleForUserOngoingCourseQuery(userId, roadmapCourseId),
+    ]);
 
     if (!courseDetails) {
       return sendApiError(res, { notifyUser: "Course not found" }, 404);
@@ -126,6 +136,12 @@ export const getCourseDetails = async (req, res) => {
         : null;
     }
 
+    // Determine ongoing current module week
+    let ongoingCurrentModuleWeek = null;
+    if (currentRoadmapCourseStatus === "in-progress") {
+      ongoingCurrentModuleWeek = currentModuleDetails?.moduleWeek || 1;
+    }
+
     return sendApiResponse(res, {
       courseDetails,
       tutorDetails,
@@ -137,6 +153,7 @@ export const getCourseDetails = async (req, res) => {
       currentRoadmapCourseStatus,
       certificateUrl,
       preRequisiteCourseDetails,
+      ongoingCurrentModuleWeek,
     });
   } catch (error) {
     logger.error(error, `error being received: [getCourseDetails]`);
