@@ -21,6 +21,9 @@ import {
   getCourseMappingDetailsQuery,
   getProjectDetailsQuery,
   getCurrentSectionWithModuleForUserOngoingCourseQuery,
+  getUserRoadmapOngoingCourseQuery,
+  getUserRoadmapUpcomingCoursesQuery,
+  getUserEnrolledRoadmapsQuery,
 } from "../services/user-common.query.js";
 
 export const getCourseDetails = async (req, res) => {
@@ -86,7 +89,7 @@ export const getCourseDetails = async (req, res) => {
 
     if (!userStatusOfCourse) {
       const roadmapDetails = await getCurrentRoadmapStatusQuery(userId, roadmapId);
-      if (roadmapDetails) {
+      if (roadmapDetails.length > 0) {
         currentRoadmapStatus = "in-progress";
         const mappingDetails = await getRoadmapCourseMappingDetailsUnderRoadmapQuery(
           roadmapCourseId,
@@ -251,5 +254,96 @@ export const getChapterLockedStatusQuery = async (
   } catch (error) {
     logger.error(error, `error being received: [getChapterLockedStatusQuery]`);
     throw new Error("Failed to fetch chapter locked status");
+  }
+};
+
+// get the user current ongoing course details and upcoming courses in the roadmap
+// the current ongoing course will be having the status of "in-progress" and the upcoming courses will be having the status of "locked" or "ready-to-enroll"
+// the current ongoing course has to return the current module week, current section id, and current chapter id and chapter detail details like title, description and user watch progress from user_chapter_progress and the content_type of the chapter and if it is quiz or project then it should have quizMappingId and projectMappingId
+export const getUserCurrentOngoingCourseDetailsController = async (req, res) => {
+  const userId = req.user.userId;
+
+  try {
+    // get the ongoing course details
+    const userEnrolledRoadmaps = await getUserEnrolledRoadmapsQuery(userId);
+    if (!userEnrolledRoadmaps || userEnrolledRoadmaps.length === 0)
+      return sendApiError(
+        res,
+        { notifyUser: "No enrolled roadmap found", action: "onboarding_questions" },
+        404
+      );
+
+    const userEnrolledRoadmapId = userEnrolledRoadmaps[0].userEnrolledRoadmapId;
+
+    const currentRoadmapId = userEnrolledRoadmaps[0].roadmapId;
+
+    // Get current ongoing course details
+    const ongoingCoursesDetails = await getUserRoadmapOngoingCourseQuery(userEnrolledRoadmapId);
+
+    logger.debug(
+      ongoingCoursesDetails,
+      `data being received: [getUserCurrentOngoingCourseDetailsController/ongoingCoursesDetails]`
+    );
+
+    // Get upcoming courses in the roadmap
+    const upcomingCourses = await getUserRoadmapUpcomingCoursesQuery(userId, currentRoadmapId);
+
+    // Prepare response
+    const response = {
+      roadmapName:
+        ongoingCoursesDetails?.length > 0
+          ? ongoingCoursesDetails[0].roadmapName
+          : userEnrolledRoadmaps[0].roadmapName,
+      currentOngoingCourses: ongoingCoursesDetails
+        ? ongoingCoursesDetails.map((course) => ({
+            roadmapCourseId: course.roadmapCourseId,
+            courseId: course.courseId,
+            courseTitle: course.courseTitle,
+            courseDescription: course.courseDescription,
+            courseThumbnailUrl: course.courseThumbnailUrl,
+            completedModules: course.completedModules,
+            totalModules: course.totalModules,
+            progressPercent: course.progressPercent,
+            currentModuleWeek: course.currentModuleWeek,
+            currentSectionId: course.currentSectionId,
+            currentChapter: {
+              chapterId: course.currentChapterId,
+              title: course.chapterTitle,
+              description: course.chapterDescription,
+              contentType: course.contentType,
+              userWatchDuration: course.userWatchDuration || 0,
+              chapterTotalDuration: course.chapterTotalDuration || 0,
+              isCompleted: course.isChapterCompleted,
+              ...(course.contentType === "quiz" &&
+                course.quizMappingId && {
+                  quizMappingId: course.quizMappingId,
+                }),
+              ...(course.contentType === "project" &&
+                course.projectMappingId && {
+                  projectMappingId: course.projectMappingId,
+                }),
+            },
+          }))
+        : [],
+      upcomingCourses: upcomingCourses.map((course) => ({
+        roadmapCourseId: course.roadmapCourseId,
+        courseId: course.courseId,
+        courseTitle: course.courseTitle,
+        courseDescription: course.courseDescription,
+        courseThumbnailUrl: course.courseThumbnailUrl,
+        estimatedDuration: course.estimatedDuration,
+        orderSequence: course.orderSequence,
+        courseStatus: course.courseStatus,
+      })),
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, `error being received: [getUserCurrentOngoingCourseDetailsController]`);
+    return sendApiError(
+      res,
+      { notifyUser: error?.message ?? "Something went wrong. Please try again!" },
+      500
+    );
   }
 };

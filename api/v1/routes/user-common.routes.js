@@ -14,12 +14,15 @@ import {
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 import UserCourseRoutes from "./user-course.routes.js";
+import { getUserCurrentOngoingCourseDetailsController } from "../controllers/user-course.controller.js";
 
 const router = Router();
 
 router.use("/streaks", UserStreaksRoutes);
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
+
+router.get("/ongoing-upcoming-courses", authenticateUserTokenMiddleware, getUserCurrentOngoingCourseDetailsController);
 
 router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 

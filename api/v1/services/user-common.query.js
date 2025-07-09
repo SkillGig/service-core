@@ -951,7 +951,7 @@ export const getCurrentRoadmapStatusQuery = async (userId, roadmapId) => {
 
   try {
     const result = await query(queryString, [userId, roadmapId]);
-    return result.length ? result[0] : null;
+    return result.length ? result : null;
   } catch (error) {
     logger.error(error, `error being received: [getCurrentRoadmapStatusQuery/error]`);
     throw error;
@@ -1282,6 +1282,125 @@ export const getCurrentSectionWithModuleForUserOngoingCourseQuery = async (
       error,
       `error being received: [getCurrentSectionWithModuleForUserOngoingCourseQuery/error]`
     );
+    throw error;
+  }
+};
+
+export const getUserRoadmapOngoingCourseQuery = async (userEnrolledRoadmapId) => {
+  logger.debug(userEnrolledRoadmapId, `data being received: [getUserRoadmapOngoingCourseQuery]`);
+
+  const queryString = `
+    SELECT
+      ucp.roadmap_course_id AS roadmapCourseId,
+      ucp.course_id AS courseId,
+      ucp.completed_modules AS completedModules,
+      ucp.total_modules AS totalModules,
+      ucp.progress_percent AS progressPercent,
+      c.title AS courseTitle,
+      c.description AS courseDescription,
+      c.thumbnail_url AS courseThumbnailUrl,
+      r.roadmap_name AS roadmapName,
+      usp.module_week AS currentModuleWeek,
+      usp.section_id AS currentSectionId,
+      ucp2.chapter_id AS currentChapterId,
+      ch.title AS chapterTitle,
+      ch.description AS chapterDescription,
+      ch.content_type AS contentType,
+      ch.content_ref_id AS quizMappingId,
+      ch.content_ref_id AS projectMappingId,
+      ucp2.watched_duration AS userWatchDuration,
+      ucp2.total_duration AS chapterTotalDuration,
+      ucp2.is_completed AS isChapterCompleted
+    FROM user_course_progress ucp
+    INNER JOIN user_section_progress usp ON ucp.id = usp.user_enrolled_course_progress_id
+    INNER JOIN user_chapter_progress ucp2 ON usp.id = ucp2.user_enrolled_section_progress_id
+    INNER JOIN courses c ON ucp.course_id = c.id
+    INNER JOIN user_enrolled_roadmaps uer ON ucp.user_enrolled_roadmap_id = uer.id
+    INNER JOIN roadmaps r ON uer.roadmap_id = r.id
+    INNER JOIN chapters ch ON ucp2.chapter_id = ch.id
+    INNER JOIN (
+      SELECT 
+        ucp_inner.roadmap_course_id,
+        MAX(ucp2_inner.unlocked_at) AS max_unlocked_at
+      FROM user_course_progress ucp_inner
+      INNER JOIN user_section_progress usp_inner ON ucp_inner.id = usp_inner.user_enrolled_course_progress_id
+      INNER JOIN user_chapter_progress ucp2_inner ON usp_inner.id = ucp2_inner.user_enrolled_section_progress_id
+      WHERE ucp_inner.user_enrolled_roadmap_id = ?
+        AND ucp_inner.is_completed = 0
+        AND ucp2_inner.is_unlocked = 1
+        AND ucp2_inner.is_completed = 0
+      GROUP BY ucp_inner.roadmap_course_id
+    ) latest_chapters ON ucp.roadmap_course_id = latest_chapters.roadmap_course_id 
+                      AND ucp2.unlocked_at = latest_chapters.max_unlocked_at
+    WHERE ucp.user_enrolled_roadmap_id = ?
+      AND ucp.is_completed = 0
+      AND ucp2.is_unlocked = 1
+      AND ucp2.is_completed = 0
+    ORDER BY ucp2.unlocked_at DESC;
+  `;
+
+  try {
+    const result = await query(queryString, [userEnrolledRoadmapId, userEnrolledRoadmapId]);
+    return result.length ? result : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserRoadmapOngoingCourseQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserRoadmapUpcomingCoursesQuery = async (userId, roadmapId) => {
+  logger.debug(userId, roadmapId, `data being received: [getUserRoadmapUpcomingCoursesQuery]`);
+
+  const queryString = `
+    SELECT
+      rcm.id AS roadmapCourseId,
+      rcm.course_id AS courseId,
+      c.title AS courseTitle,
+      c.description AS courseDescription,
+      c.thumbnail_url AS courseThumbnailUrl,
+      rcm.order AS orderSequence,
+      CASE
+        WHEN ucp.id IS NOT NULL THEN
+          CASE
+            WHEN ucp.is_completed = 1 THEN 'completed'
+            ELSE 'in-progress'
+          END
+        WHEN rcm.prerequisite_course_id IS NULL THEN 'ready-to-enroll'
+        WHEN prereq_ucp.is_completed = 1 THEN 'ready-to-enroll'
+        ELSE 'locked'
+      END AS courseStatus
+    FROM roadmap_courses_mapping rcm
+    INNER JOIN courses c ON rcm.course_id = c.id
+    LEFT JOIN user_course_progress ucp ON rcm.id = ucp.roadmap_course_id AND ucp.user_id = ?
+    LEFT JOIN user_course_progress prereq_ucp ON rcm.prerequisite_course_id = prereq_ucp.roadmap_course_id AND prereq_ucp.user_id = ?
+    WHERE rcm.roadmap_id = ? AND (ucp.id IS NULL OR ucp.is_completed = 0)
+    having courseStatus != 'in-progress'
+    ORDER BY rcm.order;
+  `;
+
+  try {
+    const result = await query(queryString, [userId, userId, roadmapId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserRoadmapUpcomingCoursesQuery/error]`);
+    throw error;
+  }
+};
+
+export const getUserEnrolledRoadmapsQuery = async (userId) => {
+  logger.debug(userId, `data being received: [getUserEnrolledRoadmapsQuery]`);
+
+  const queryString = `
+    SELECT uer.id AS userEnrolledRoadmapId, r.id AS roadmapId, r.roadmap_name AS roadmapName, uer.enrolled_at AS enrolledAt
+    FROM user_enrolled_roadmaps uer
+    INNER JOIN roadmaps r ON uer.roadmap_id = r.id
+    WHERE uer.user_id = ?;`;
+
+  try {
+    const result = await query(queryString, [userId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getUserEnrolledRoadmapsQuery/error]`);
     throw error;
   }
 };
