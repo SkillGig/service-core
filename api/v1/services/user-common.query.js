@@ -1088,12 +1088,30 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
        ucp.unlocked_at      AS unlockedAt,
        ucp.is_completed     AS isCompleted,
        ucp.content_ref_id   AS contentRefId,
+       ucp.current_quiz_attempt_id AS currentQuizAttemptId,
+       ucp.latest_project_submission_id AS latestProjectSubmissionId,
        qm.xp_points         AS quizXpPoints,
        pm.xp_points         AS projectXpPoints,
        qm.id                AS quizMappingId,
        pm.id                AS projectMappingId,
-       ups.id               AS latestSubmissionId,
+       uqa.id               AS quizAttemptId,
+       uqa.score            AS quizScore,
+       uqa.total_points     AS quizTotalPoints,
+       uqa.status           AS quizAttemptStatus,
+       uqa.started_at       AS quizStartedAt,
+       uqa.completed_at     AS quizCompletedAt,
+       -- Project submission details
+       ups.id               AS projectSubmissionId,
+       ups.attempt_number   AS projectAttemptNumber,
+       ups.github_url       AS projectGithubUrl,
+       ups.doc_url          AS projectDocUrl,
+       ups.deployed_url     AS projectDeployedUrl,
+       ups.submission_comment AS projectSubmissionComment,
        ups.status           AS projectSubmissionStatus,
+       ups.tutor_review_comment AS projectTutorComment,
+       ups.reviewed_by      AS projectReviewedBy,
+       ups.submitted_at     AS projectSubmittedAt,
+       ups.reviewed_at      AS projectReviewedAt,
        CAST(ROUND(
                100 * GREATEST(
                        CASE
@@ -1108,7 +1126,8 @@ export const getModuleLevelCourseProgressQueryWithChapters = async (
               INNER JOIN sections s ON ucp.section_id = s.id
               LEFT JOIN quiz_mapping qm ON ucp.content_type = 'quiz' AND ucp.content_ref_id = qm.id
               LEFT JOIN projects_mapping pm ON ucp.content_type = 'project' AND ucp.content_ref_id = pm.id
-              LEFT JOIN user_project_submissions ups ON ucp.content_type = 'project' AND ucp.content_ref_id = ups.course_project_task_id
+              LEFT JOIN user_quiz_attempts uqa ON ucp.content_type = 'quiz' AND ucp.current_quiz_attempt_id = uqa.id
+              LEFT JOIN user_project_submissions ups ON ucp.content_type = 'project' AND ucp.latest_project_submission_id = ups.id
       WHERE ucp.user_id = ?
         AND ucp.roadmap_course_id = ?
         AND usp.module_week = ?
@@ -1306,11 +1325,31 @@ export const getUserRoadmapOngoingCourseQuery = async (userEnrolledRoadmapId) =>
       ch.title AS chapterTitle,
       ch.description AS chapterDescription,
       ch.content_type AS contentType,
-      ch.content_ref_id AS quizMappingId,
-      ch.content_ref_id AS projectMappingId,
+      ch.content_ref_id AS contentRefId,
+      ucp2.current_quiz_attempt_id AS currentQuizAttemptId,
+      ucp2.latest_project_submission_id AS latestProjectSubmissionId,
       ucp2.watched_duration AS userWatchDuration,
       ucp2.total_duration AS chapterTotalDuration,
-      ucp2.is_completed AS isChapterCompleted
+      ucp2.is_completed AS isChapterCompleted,
+      -- Quiz attempt details
+      uqa.id AS quizAttemptId,
+      uqa.score AS quizScore,
+      uqa.total_points AS quizTotalPoints,
+      uqa.status AS quizAttemptStatus,
+      uqa.started_at AS quizStartedAt,
+      uqa.completed_at AS quizCompletedAt,
+      -- Project submission details
+      ups.id AS projectSubmissionId,
+      ups.attempt_number AS projectAttemptNumber,
+      ups.github_url AS projectGithubUrl,
+      ups.doc_url AS projectDocUrl,
+      ups.deployed_url AS projectDeployedUrl,
+      ups.submission_comment AS projectSubmissionComment,
+      ups.status AS projectSubmissionStatus,
+      ups.tutor_review_comment AS projectTutorComment,
+      ups.reviewed_by AS projectReviewedBy,
+      ups.submitted_at AS projectSubmittedAt,
+      ups.reviewed_at AS projectReviewedAt
     FROM user_course_progress ucp
     INNER JOIN user_section_progress usp ON ucp.id = usp.user_enrolled_course_progress_id
     INNER JOIN user_chapter_progress ucp2 ON usp.id = ucp2.user_enrolled_section_progress_id
@@ -1318,6 +1357,8 @@ export const getUserRoadmapOngoingCourseQuery = async (userEnrolledRoadmapId) =>
     INNER JOIN user_enrolled_roadmaps uer ON ucp.user_enrolled_roadmap_id = uer.id
     INNER JOIN roadmaps r ON uer.roadmap_id = r.id
     INNER JOIN chapters ch ON ucp2.chapter_id = ch.id
+    LEFT JOIN user_quiz_attempts uqa ON ch.content_type = 'quiz' AND ucp2.current_quiz_attempt_id = uqa.id
+    LEFT JOIN user_project_submissions ups ON ch.content_type = 'project' AND ucp2.latest_project_submission_id = ups.id
     INNER JOIN (
       SELECT 
         ucp_inner.roadmap_course_id,

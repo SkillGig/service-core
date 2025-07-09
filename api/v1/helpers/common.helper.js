@@ -274,12 +274,38 @@ export const transformModuleDetails = (data) => {
       unlockedAt: item.unlockedAt,
       isCompleted: item.isCompleted,
       completionPercent: item.completionPercent,
+      contentRefId: item.contentRefId,
+      // Quiz details
       quizXpPoints: item.quizXpPoints || null,
-      projectXpPoints: item.projectXpPoints || null,
-      latestSubmissionId: item.latestSubmissionId || null,
       quizMappingId: item.quizMappingId || null,
+      currentQuizAttempt: item.currentQuizAttemptId
+        ? {
+            attemptId: item.quizAttemptId,
+            score: item.quizScore,
+            totalPoints: item.quizTotalPoints,
+            status: item.quizAttemptStatus,
+            startedAt: item.quizStartedAt,
+            completedAt: item.quizCompletedAt,
+          }
+        : null,
+      // Project details
+      projectXpPoints: item.projectXpPoints || null,
       projectMappingId: item.projectMappingId || null,
-      projectSubmissionStatus: item.projectSubmissionStatus || null,
+      latestProjectSubmission: item.latestProjectSubmissionId
+        ? {
+            submissionId: item.projectSubmissionId,
+            attemptNumber: item.projectAttemptNumber,
+            githubUrl: item.projectGithubUrl,
+            docUrl: item.projectDocUrl,
+            deployedUrl: item.projectDeployedUrl,
+            submissionComment: item.projectSubmissionComment,
+            status: item.projectSubmissionStatus,
+            tutorComment: item.projectTutorComment,
+            reviewedBy: item.projectReviewedBy,
+            submittedAt: item.projectSubmittedAt,
+            reviewedAt: item.projectReviewedAt,
+          }
+        : null,
     });
 
     // Find the most recently unlocked chapter

@@ -311,16 +311,38 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
               title: course.chapterTitle,
               description: course.chapterDescription,
               contentType: course.contentType,
+              contentRefId: course.contentRefId,
               userWatchDuration: course.userWatchDuration || 0,
               chapterTotalDuration: course.chapterTotalDuration || 0,
               isCompleted: course.isChapterCompleted,
+              // Quiz attempt details
               ...(course.contentType === "quiz" &&
-                course.quizMappingId && {
-                  quizMappingId: course.quizMappingId,
+                course.currentQuizAttemptId && {
+                  currentQuizAttempt: {
+                    attemptId: course.quizAttemptId,
+                    score: course.quizScore,
+                    totalPoints: course.quizTotalPoints,
+                    status: course.quizAttemptStatus,
+                    startedAt: course.quizStartedAt,
+                    completedAt: course.quizCompletedAt,
+                  },
                 }),
+              // Project submission details
               ...(course.contentType === "project" &&
-                course.projectMappingId && {
-                  projectMappingId: course.projectMappingId,
+                course.latestProjectSubmissionId && {
+                  latestProjectSubmission: {
+                    submissionId: course.projectSubmissionId,
+                    attemptNumber: course.projectAttemptNumber,
+                    githubUrl: course.projectGithubUrl,
+                    docUrl: course.projectDocUrl,
+                    deployedUrl: course.projectDeployedUrl,
+                    submissionComment: course.projectSubmissionComment,
+                    status: course.projectSubmissionStatus,
+                    tutorComment: course.projectTutorComment,
+                    reviewedBy: course.projectReviewedBy,
+                    submittedAt: course.projectSubmittedAt,
+                    reviewedAt: course.projectReviewedAt,
+                  },
                 }),
             },
           }))
