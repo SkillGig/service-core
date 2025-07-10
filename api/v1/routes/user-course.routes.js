@@ -4,6 +4,7 @@ import {
   getCourseDetails,
   getUserCourseModuleDetailsController,
   getUserCourseSummaryController,
+  getUserCurrentOngoingCourseDetailsController,
 } from "../controllers/user-course.controller.js";
 import {
   getUserNotesController,
@@ -24,6 +25,13 @@ router.get(
   "/module-details",
   authenticateUserTokenMiddleware,
   getUserCourseModuleDetailsController
+);
+
+// Ongoing Courses API
+router.get(
+  "/ongoing-courses",
+  authenticateUserTokenMiddleware,
+  getUserCurrentOngoingCourseDetailsController
 );
 
 // Notes APIs
