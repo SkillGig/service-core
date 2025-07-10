@@ -20,7 +20,7 @@ All APIs require authentication via the `authenticateUserTokenMiddleware`. Inclu
 
 ```http
 GET /api/v1/roadmap/roadmap-course/ongoing-courses
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Response
@@ -105,7 +105,7 @@ Authorization: Bearer <user_token>
 
 ```http
 GET /api/v1/roadmap/roadmap-course/course-details?roadmapCourseId=12&roadmapId=5
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Parameters
@@ -187,7 +187,7 @@ Authorization: Bearer <user_token>
 
 ```http
 GET /api/v1/roadmap/roadmap-course/summary?roadmapCourseId=12
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Response
@@ -255,7 +255,7 @@ Authorization: Bearer <user_token>
 
 ```http
 GET /api/v1/roadmap/roadmap-course/module-details?roadmapCourseId=12&moduleWeek=1
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Response
@@ -392,7 +392,7 @@ Authorization: Bearer <user_token>
 ```http
 [PLACEHOLDER - ANIRUDDH TO PROVIDE]
 GET /api/v1/content/video?chapterId=62
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Expected Response Structure
@@ -427,7 +427,7 @@ Authorization: Bearer <user_token>
 ```http
 [PLACEHOLDER - PRADHYUM TO PROVIDE]
 GET /api/v1/quiz/questions?chapterId=63&quizMappingId=789
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Expected Response Structure
@@ -476,7 +476,7 @@ Authorization: Bearer <user_token>
 
 ```http
 GET /api/v1/roadmap/roadmap-course/project-details?projectMappingId=456
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 ```
 
 #### Response
@@ -521,7 +521,7 @@ Authorization: Bearer <user_token>
 
 ```http
 POST /api/v1/roadmap/roadmap-course/project-submission
-Authorization: Bearer <user_token>
+Authorization: <user_token>
 Content-Type: application/json
 
 {
