@@ -7,45 +7,40 @@ import {
   enrollUserToRoadmap,
   userConfigController,
   getRoadmapDetails,
-  getCourseDetails,
+  unlockCourseForTheUserController,
+  unlockModuleUnderCourseController,
+  unlockSectionUnderCourseController,
+  unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
+import UserCourseRoutes from "./user-course.routes.js";
+import { getUserCurrentOngoingCourseDetailsController } from "../controllers/user-course.controller.js";
 
 const router = Router();
 
-router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
+router.use("/streaks", UserStreaksRoutes);
 
-router.use("/config", authenticateUserTokenMiddleware, userConfigController);
+router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.post(
-  "/enroll-roadmap",
-  authenticateUserTokenMiddleware,
-  enrollUserToRoadmap
-);
+router.get("/ongoing-upcoming-courses", authenticateUserTokenMiddleware, getUserCurrentOngoingCourseDetailsController);
 
-router.get(
-  "/roadmap-details",
-  authenticateUserTokenMiddleware,
-  getRoadmapDetails
-);
+router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 
-router.get(
-  "/course-details",
-  authenticateUserTokenMiddleware,
-  getCourseDetails
-);
+router.post("/enroll-course", authenticateUserTokenMiddleware, unlockCourseForTheUserController);
 
-router.get(
-  "/roadmaps",
-  authenticateUserTokenMiddleware,
-  fetchUserSelectedRoadmaps
-);
+router.post("/unlock-module", authenticateUserTokenMiddleware, unlockModuleUnderCourseController);
 
-router.get(
-  "/notifications/all",
-  authenticateUserTokenMiddleware,
-  getAllUserNotifications
-);
+router.post("/unlock-section", authenticateUserTokenMiddleware, unlockSectionUnderCourseController);
+
+router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnderCourseController);
+
+router.get("/roadmap-details", authenticateUserTokenMiddleware, getRoadmapDetails);
+
+router.get("/roadmaps", authenticateUserTokenMiddleware, fetchUserSelectedRoadmaps);
+
+router.use("/roadmap/roadmap-course", UserCourseRoutes);
+
+router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
 
 router.patch(
   "/notifications/mark-as-seen",
