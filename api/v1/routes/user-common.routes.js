@@ -22,8 +22,6 @@ router.use("/streaks", UserStreaksRoutes);
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.get("/ongoing-upcoming-courses", authenticateUserTokenMiddleware, getUserCurrentOngoingCourseDetailsController);
-
 router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 
 router.post("/enroll-course", authenticateUserTokenMiddleware, unlockCourseForTheUserController);

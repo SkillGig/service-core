@@ -306,6 +306,7 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
             progressPercent: course.progressPercent,
             currentModuleWeek: course.currentModuleWeek,
             currentSectionId: course.currentSectionId,
+            courseStatus: 'in-progress',
             currentChapter: {
               chapterId: course.currentChapterId,
               title: course.chapterTitle,

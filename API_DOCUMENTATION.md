@@ -40,6 +40,7 @@ Authorization: <user_token>
       "progressPercent": "0.00",
       "currentModuleWeek": 1,
       "currentSectionId": 78,
+      "courseStatus": "in-progress",
       "currentChapter": {
         "chapterId": 62,
         "title": "Introduction to Java",
