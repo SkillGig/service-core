@@ -419,15 +419,15 @@ Authorization: <user_token>
 
 ### 5b. Quiz Content API
 
+#### Get quiz
 **Purpose**: Get quiz questions and handle quiz attempts
-**Endpoint**: `[TO BE PROVIDED BY PRADHYUM]`
-**Dependencies**: Step 4 - requires `chapterId` and `quizMappingId`
+**Endpoint**: `GET /api/v1/chapters/quiz/:userChapterProgressId`
+**Dependencies**: Step 4 - requires `userChapterProgressId`
 
 #### Request
 
 ```http
-[PLACEHOLDER - PRADHYUM TO PROVIDE]
-GET /api/v1/quiz/questions?chapterId=63&quizMappingId=789
+GET /api/v1/chapters/quiz/236
 Authorization: <user_token>
 ```
 
@@ -435,33 +435,207 @@ Authorization: <user_token>
 
 ```json
 {
-  "quizId": 456,
-  "quizMappingId": 789,
-  "chapterId": 63,
-  "title": "Java Basics Quiz",
-  "description": "Test your knowledge of Java basics",
-  "timeLimit": 900,
-  "totalPoints": 10,
+  "quizId": 28,
+  "totalPoints": 5,
+  "timeLimit": 20,
   "questions": [
-    {
-      "questionId": 1,
-      "questionText": "What is Java?",
-      "questionType": "multiple_choice",
-      "options": [
-        { "optionId": 1, "text": "Programming Language" },
-        { "optionId": 2, "text": "Coffee" },
-        { "optionId": 3, "text": "Island" },
-        { "optionId": 4, "text": "All of the above" }
-      ],
-      "points": 2
+      {
+          "questionId": 59,
+          "questionText": "What is the focus of the Next JS course?",
+          "questionType": "single_choice",
+          "difficultyLevel": "easy",
+          "point": 1,
+          "options": [
+              {
+                  "optionId": 34,
+                  "optionText": "Front-end development"
+              },
+              {
+                  "optionId": 35,
+                  "optionText": "Next JS crash course"
+              },
+              {
+                  "optionId": 36,
+                  "optionText": "Building real-world production grade applications using Next JS"
+              },
+              {
+                  "optionId": 37,
+                  "optionText": "React JS crash course"
+              }
+          ]
+      },
+      {
+          "questionId": 60,
+          "questionText": "What technology is the Next JS application built in?",
+          "questionType": "single_choice",
+          "difficultyLevel": "easy",
+          "point": 1,
+          "options": [
+              {
+                  "optionId": 38,
+                  "optionText": "TypeScript"
+              },
+              {
+                  "optionId": 39,
+                  "optionText": "JavaScript"
+              },
+              {
+                  "optionId": 40,
+                  "optionText": "Python"
+              },
+              {
+                  "optionId": 41,
+                  "optionText": "Java"
+              }
+          ]
+      },
+      {
+          "questionId": 61,
+          "questionText": "Which framework is Next JS built on top of?",
+          "questionType": "single_choice",
+          "difficultyLevel": "medium",
+          "point": 1,
+          "options": [
+              {
+                  "optionId": 42,
+                  "optionText": "Angular"
+              },
+              {
+                  "optionId": 43,
+                  "optionText": "Vue JS"
+              },
+              {
+                  "optionId": 44,
+                  "optionText": "React JS"
+              },
+              {
+                  "optionId": 45,
+                  "optionText": "Ember JS"
+              }
+          ]
+      },
+      {
+          "questionId": 62,
+          "questionText": "What is the primary database used in the Next JS course?",
+          "questionType": "single_choice",
+          "difficultyLevel": "easy",
+          "point": 1,
+          "options": [
+              {
+                  "optionId": 46,
+                  "optionText": "MySQL"
+              },
+              {
+                  "optionId": 47,
+                  "optionText": "MongoDB"
+              },
+              {
+                  "optionId": 48,
+                  "optionText": "Firebase"
+              },
+              {
+                  "optionId": 49,
+                  "optionText": "PostgreSQL"
+              }
+          ]
+      },
+      {
+          "questionId": 63,
+          "questionText": "What is the purpose of using an NPX command to create the Next JS app?",
+          "questionType": "single_choice",
+          "difficultyLevel": "medium",
+          "point": 1,
+          "options": [
+              {
+                  "optionId": 50,
+                  "optionText": "To pull in the latest version of Next JS."
+              },
+              {
+                  "optionId": 51,
+                  "optionText": "To run the application in production mode."
+              },
+              {
+                  "optionId": 52,
+                  "optionText": "To install additional packages."
+              },
+              {
+                  "optionId": 53,
+                  "optionText": "To create a new project directory."
+              }
+          ]
+      }
+  ]
+}
+```
+#### Save Quiz Questions
+**Purpose**: Save selected answers for quiz questions
+**Endpoint**: `POST /api/v1/chapters/quiz/save`
+**Dependencies**: Step 4 - requires body payload
+
+#### Request
+
+```http
+POST /api/v1/chapters/quiz/save
+Authorization: <user_token>
+Content-Type: application/json
+
+{
+  "quizId":28,
+  "questionId":62,
+  "selectedOptionIds":[40],
+  "selectedAnswer":"Building real-world1S",
+  "questionType" : "single_choice"
+}
+```
+
+#### Expected Response Structure
+
+```json
+{
+    "message": "success",
+    "data": {
+        "notifyUser": "Quiz answer saved successfully",
+        "attemptId": 14,
+        "questionId": 62
     }
-  ],
-  "currentAttempt": {
-    "attemptId": 101,
-    "status": "in_progress",
-    "startedAt": "2025-07-10T11:00:00Z",
-    "timeRemaining": 750
-  }
+}
+```
+#### Save Quiz Questions
+**Purpose**: Submit quiz answers after completion
+**Endpoint**: `POST /api/v1/chapters/quiz/submission`
+**Dependencies**: Step 4 - requires body payload
+
+#### Request
+
+```http
+POST /api/v1/chapters/quiz/save
+Authorization: <user_token>
+Content-Type: application/json
+
+{
+    "quizId":28,
+    "chapterProgressId":236
+}
+```
+
+#### Expected Response Structure
+
+```json
+{
+    "message": "success",
+    "data": {
+        "notifyUser": "Quiz submitted successfully",
+        "quizId": 28,
+        "isPassed": false,
+        "correctQuestionCount": 0,
+        "incorrectQuestionCount": 4,
+        "skippedQuestionCount": 1,
+        "totalQuestions": 5,
+        "percentageAchieved": "0%",
+        "scoreAchieved": 0,
+        "totalScore": 5,
+        "passingPercentage": "80.00%"
+    }
 }
 ```
 
