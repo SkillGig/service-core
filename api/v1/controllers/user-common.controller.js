@@ -233,12 +233,13 @@ export const enrollUserToRoadmap = async (req, res) => {
       return sendApiError(res, { notifyUser: errorMessage }, statusCode);
     }
   } catch (error) {
-    if (conn) conn.release();
     logger.error(
       { error: error.message, stack: error.stack, userId, roadmapId },
       "[enrollUserToRoadmap] Unexpected error during enrollment"
     );
     return sendApiError(res, { notifyUser: "Something went wrong. Please try again!" }, 500);
+  } finally {
+    if (conn) conn.release();
   }
 };
 
