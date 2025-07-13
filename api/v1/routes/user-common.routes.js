@@ -9,6 +9,7 @@ import {
   getRoadmapDetails,
   getCourseDetails,
 } from "../controllers/user-common.controller.js";
+import UserCodeProblemsRoute from "./code-problems.route.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 
 const router = Router();
@@ -16,6 +17,8 @@ const router = Router();
 router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
 
 router.use("/config", authenticateUserTokenMiddleware, userConfigController);
+
+router.use("/code-problems", UserCodeProblemsRoute)
 
 router.post(
   "/enroll-roadmap",

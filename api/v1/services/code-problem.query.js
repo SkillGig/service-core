@@ -1,0 +1,113 @@
+import { pool, query } from "../../../config/db.js";
+import logger from "../../../config/logger.js";
+
+export const getAllProblemsQuery = async (userId) => {
+  try {
+    const queryText = `
+      select pps.id AS id, 
+            pps.title AS title,
+            pps.difficulty AS difficulty, 
+            ps.status AS userStatus 
+      FROM programming_problem_statements pps
+      LEFT JOIN programming_submissions ps on pps.id = ps.question_id AND ps.user_id = ?
+      WHERE pps.is_active = 1`;
+
+    const problems = await query(queryText, [userId]);
+    return problems;
+  } catch (error) {
+    logger.error(`Error fetching problems for user ID: ${userId}`, error);
+    throw new Error("Failed to fetch code problems");
+  }
+};
+
+export const getProblemByIdQuery = async (problemId, userId) => {
+  try {
+    const queryText = `
+      SELECT 
+         pps.id AS id, 
+         pps.title AS title, 
+         pps.description AS description, 
+         pps.difficulty AS difficulty, 
+
+         ps.status AS userStatus,
+         ps.submission_at AS userSubmissionDate,
+         ps.code AS userCode,
+         ps.language_id AS userLastUsedLanguageId,
+
+         pql_user.starter_code AS userStarterCode,
+         pql_user.default_stdin AS userDefaultStdIn,
+         pql_user.expected_output AS userExpectedOutput,
+
+         dpl.id AS defaultLanguageId,
+         dpl.name AS defaultLanguageName,
+
+         pql_default.starter_code AS defaultStarterCode,
+         pql_default.default_stdin AS defaultStdIn,
+         pql_default.expected_output AS expectedOutput
+
+      FROM programming_problem_statements pps
+
+      LEFT JOIN (
+         SELECT * FROM programming_submissions 
+         WHERE user_id = ? 
+         ORDER BY submission_at DESC 
+         LIMIT 1
+      ) ps ON ps.question_id = pps.id
+
+      LEFT JOIN programming_question_languages pql_user 
+         ON pql_user.question_id = pps.id 
+         AND pql_user.language_id = ps.language_id
+
+      LEFT JOIN dim_programming_languages dpl 
+         ON dpl.id = 1
+
+      LEFT JOIN programming_question_languages pql_default 
+         ON pql_default.question_id = pps.id 
+         AND pql_default.language_id = 1
+
+      WHERE pps.id = ? 
+      AND pps.is_active = 1;`;
+
+    const problem = await query(queryText, [userId, problemId]);
+    return problem[0] || null; // Return the first result or null if not found
+  } catch (error) {
+    logger.error(`Error fetching problem with ID: ${problemId} for user ID: ${userId}`, error);
+    throw new Error("Failed to fetch code problem");
+  }
+}
+
+export const getAllLanguagesQuery = async()=>{
+   try {
+      const queryText = `
+         SELECT id, name, slug 
+         FROM dim_programming_languages 
+         WHERE is_active = 1;`;
+      const languages = await query(queryText);
+      return languages;
+   } catch (error) {
+      logger.error("Error fetching all languages", error);
+      throw new Error("Failed to fetch programming languages");
+      
+   }
+}
+export const getDetailsByLanguageIdQuery = async (problemId, languageId) => {
+  try {
+    const queryText = `
+      SELECT 
+         pql.id, 
+         dpl.name, 
+         dpl.slug, 
+         pql.starter_code AS starterCode, 
+         pql.default_stdin AS defaultStdIn, 
+         pql.expected_output AS expectedOutput 
+      FROM programming_question_languages pql
+      JOIN dim_programming_languages dpl ON pql.language_id = dpl.id
+      WHERE pql.language_id = ? AND pql.question_id = ?;`;
+
+    const languageDetails = await query(queryText, [languageId, problemId]);
+    return languageDetails[0]
+  } catch (error) {
+    logger.error(`Error fetching details for language ID: ${languageId}`, error);
+    throw new Error("Failed to fetch language details");
+  }
+};
