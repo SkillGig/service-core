@@ -4,13 +4,36 @@ import logger from "../../../config/logger.js";
 export const getAllProblemsQuery = async (userId) => {
   try {
     const queryText = `
-      select pps.id AS id, 
-            pps.title AS title,
-            pps.difficulty AS difficulty, 
-            ps.status AS userStatus 
-      FROM programming_problem_statements pps
-      LEFT JOIN programming_submissions ps on pps.id = ps.question_id AND ps.user_id = ?
-      WHERE pps.is_active = 1`;
+    SELECT 
+      pps.id AS id,
+      pps.title AS title,
+      pps.difficulty AS difficulty,
+      pps.time AS time,
+      IFNULL(ps.status, 'unsolved') AS userStatus,
+      GROUP_CONCAT(pt.name ORDER BY pt.name SEPARATOR ', ') AS tags,
+      
+      COUNT(DISTINCT solved.user_id) AS users_solved,
+      COUNT(DISTINCT attempted.user_id) AS users_attempted,
+      ROUND(
+        (COUNT(DISTINCT solved.user_id) / NULLIF(COUNT(DISTINCT attempted.user_id), 0)) * 100,
+        2
+      ) AS completionRate
+
+    FROM programming_problem_statements pps
+    LEFT JOIN programming_submissions ps 
+      ON pps.id = ps.question_id AND ps.user_id = ?
+
+    LEFT JOIN programming_problem_tags ppt ON pps.id = ppt.problem_id
+    LEFT JOIN programming_tags pt ON ppt.tag_id = pt.id
+
+    LEFT JOIN programming_submissions attempted 
+      ON attempted.question_id = pps.id
+    LEFT JOIN programming_submissions solved 
+      ON solved.question_id = pps.id AND solved.status = 'passed'
+    WHERE pps.is_active = 1
+    GROUP BY 
+      pps.id, pps.title, pps.difficulty, pps.time, ps.status;
+`;
 
     const problems = await query(queryText, [userId]);
     return problems;
@@ -22,6 +45,7 @@ export const getAllProblemsQuery = async (userId) => {
 
 export const getProblemByIdQuery = async (problemId, userId) => {
   try {
+    const DEFAULT_LANGUAGE_ID = 1; // Assuming 1 is the default language (Javascript) ID, adjust as necessary
     const queryText = `
       SELECT 
          pps.id AS id, 
@@ -59,11 +83,11 @@ export const getProblemByIdQuery = async (problemId, userId) => {
          AND pql_user.language_id = ps.language_id
 
       LEFT JOIN dim_programming_languages dpl 
-         ON dpl.id = 1
+         ON dpl.id = ${DEFAULT_LANGUAGE_ID}
 
       LEFT JOIN programming_question_languages pql_default 
          ON pql_default.question_id = pps.id 
-         AND pql_default.language_id = 1
+         AND pql_default.language_id = ${DEFAULT_LANGUAGE_ID}
 
       WHERE pps.id = ? 
       AND pps.is_active = 1;`;
@@ -90,7 +114,7 @@ export const getAllLanguagesQuery = async()=>{
       
    }
 }
-export const getDetailsByLanguageIdQuery = async (problemId, languageId) => {
+export const getDetailsByLanguageIdQuery = async (languageId,problemId) => {
   try {
     const queryText = `
       SELECT 

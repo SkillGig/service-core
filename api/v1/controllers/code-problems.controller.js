@@ -17,7 +17,9 @@ export const getAllProblems = async (req, res) => {
       });
    } catch (error) {
       logger.error(`Error fetching problems for user ID: ${userId}`, error);
-      sendApiError(res, "Failed to fetch code problems");
+      sendApiError(res, {
+         message: "Failed to fetch code problems"
+      });
    }
 }
 
@@ -46,7 +48,7 @@ export const getDetailsByLanguageId = async (req, res) => {
    const userId = req.user.userId; 
    try {
       logger.info(`Fetching details for language ID: ${languageId} for user ID: ${userId}`);
-      const languageDetails = await getDetailsByLanguageIdQuery(problemId, languageId);
+      const languageDetails = await getDetailsByLanguageIdQuery(languageId, problemId);
       if (!languageDetails) {
          return sendApiError(res, 404, "Language details not found");
       }
@@ -56,6 +58,6 @@ export const getDetailsByLanguageId = async (req, res) => {
       });
    } catch (error) {
       logger.error(`Error fetching details for language ID: ${languageId} for user ID: ${userId}`, error);
-      sendApiError(res, "Failed to fetch language details or Not Found");
+      sendApiError(res, "Failed to fetch language details");
    }
 }
