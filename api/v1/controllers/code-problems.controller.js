@@ -39,7 +39,9 @@ export const getProblemById = async (req, res) => {
       });
    } catch (error) {
       logger.error(`Error fetching problem with ID: ${problemId} for user ID: ${userId}`, error);
-      sendApiError(res, "Failed to fetch code problem");
+      sendApiError(res, {
+         message: "Failed to fetch code problem"
+      });
    }
 }
 
@@ -58,6 +60,8 @@ export const getDetailsByLanguageId = async (req, res) => {
       });
    } catch (error) {
       logger.error(`Error fetching details for language ID: ${languageId} for user ID: ${userId}`, error);
-      sendApiError(res, "Failed to fetch language details");
+      sendApiError(res, {
+         message: "Failed to fetch language details"
+      });
    }
 }

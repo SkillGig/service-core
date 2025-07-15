@@ -4,7 +4,7 @@ import { getAllProblems, getProblemById, getDetailsByLanguageId } from "../contr
 
 const router = Router();
 
-router.get("/", authenticateUserTokenMiddleware, getAllProblems)
+router.get("/", authenticateUserTokenMiddleware, getAllProblems);
 router.get("/:problemId", authenticateUserTokenMiddleware, getProblemById);
 router.get("/:problemId/languages/:languageId", authenticateUserTokenMiddleware, getDetailsByLanguageId);
 export default router;

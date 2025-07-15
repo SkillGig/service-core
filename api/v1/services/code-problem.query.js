@@ -1,4 +1,4 @@
-import { pool, query } from "../../../config/db.js";
+import { query } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 
 export const getAllProblemsQuery = async (userId) => {
@@ -10,18 +10,28 @@ export const getAllProblemsQuery = async (userId) => {
       pps.difficulty AS difficulty,
       pps.time AS time,
       IFNULL(ps.status, 'unsolved') AS userStatus,
+      ps.latest_submission_at AS latestSubmissionAt,
       GROUP_CONCAT(pt.name ORDER BY pt.name SEPARATOR ', ') AS tags,
       
       COUNT(DISTINCT solved.user_id) AS users_solved,
       COUNT(DISTINCT attempted.user_id) AS users_attempted,
       ROUND(
-        (COUNT(DISTINCT solved.user_id) / NULLIF(COUNT(DISTINCT attempted.user_id), 0)) * 100,
-        2
+        IFNULL((COUNT(DISTINCT solved.user_id) / NULLIF(COUNT(DISTINCT attempted.user_id), 0)) * 100,
+        0) ,2
       ) AS completionRate
 
     FROM programming_problem_statements pps
-    LEFT JOIN programming_submissions ps 
-      ON pps.id = ps.question_id AND ps.user_id = ?
+    
+    LEFT JOIN (
+      SELECT 
+        question_id, 
+        user_id, 
+        status, 
+        MAX(submission_at) AS latest_submission_at
+      FROM programming_submissions
+      WHERE user_id = ?
+      GROUP BY question_id, user_id
+    ) ps ON pps.id = ps.question_id
 
     LEFT JOIN programming_problem_tags ppt ON pps.id = ppt.problem_id
     LEFT JOIN programming_tags pt ON ppt.tag_id = pt.id
@@ -31,9 +41,9 @@ export const getAllProblemsQuery = async (userId) => {
     LEFT JOIN programming_submissions solved 
       ON solved.question_id = pps.id AND solved.status = 'passed'
     WHERE pps.is_active = 1
+    
     GROUP BY 
-      pps.id, pps.title, pps.difficulty, pps.time, ps.status;
-`;
+      pps.id, pps.title, pps.difficulty, pps.time, IFNULL(ps.status, 'unsolved');`;
 
     const problems = await query(queryText, [userId]);
     return problems;
