@@ -2,17 +2,38 @@ import { sendApiError, sendApiResponse } from "../helpers/api.helper.js";
 import { getAllProblemsQuery,
    getProblemByIdQuery,
    getAllLanguagesQuery,
-   getDetailsByLanguageIdQuery
+   getDetailsByLanguageIdQuery,
+   getTotalProblemsCountQuery
  } from "../services/code-problem.query.js";
 import logger from "../../../config/logger.js";
 
 export const getAllProblems = async (req, res) => {
    const userId = req.user.userId; 
+   const page = parseInt(req.query.page) || 1; 
+   const limit = parseInt(req.query.limit) || 10;
+   const offset = (page - 1) * limit;
+
+   const sortBy = req.query.sortBy || 'title';
+   const order = req.query.order?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+   const allowedSortFields = ['title', 'difficulty','status'];
+   let sortField = allowedSortFields.includes(sortBy) ? `pps.${sortBy}` : 'pps.title';
+
    try {
       logger.info(`Fetching all problems for user ID: ${userId}`);
-      const problems = await getAllProblemsQuery(userId);
+      logger.debug(`Sorting by: ${sortField} ${order}, Page: ${page}, Limit: ${limit}`);
+      const problems = await getAllProblemsQuery(userId, offset, limit, sortField, order);
+      problems.forEach(problem => {
+         problem.tags = problem.tags ? problem.tags.split(', ') : [];
+         problem.completionRate = parseFloat(problem.completionRate);
+      });
+      const totalCount = await getTotalProblemsCountQuery();
+      const totalPages = Math.ceil(totalCount / limit);
+
       sendApiResponse(res, {
          success: true,
+         hasNextPage: page < totalPages,
+         hasPreviousPage: page > 1,
          data: problems,
       });
    } catch (error) {

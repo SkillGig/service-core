@@ -1,7 +1,7 @@
 import { query } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 
-export const getAllProblemsQuery = async (userId) => {
+export const getAllProblemsQuery = async (userId, offset, limit, sortBy, order) => {
   try {
     const queryText = `
     SELECT 
@@ -41,17 +41,35 @@ export const getAllProblemsQuery = async (userId) => {
     LEFT JOIN programming_submissions solved 
       ON solved.question_id = pps.id AND solved.status = 'passed'
     WHERE pps.is_active = 1
-    
-    GROUP BY 
-      pps.id, pps.title, pps.difficulty, pps.time, IFNULL(ps.status, 'unsolved');`;
 
-    const problems = await query(queryText, [userId]);
+    GROUP BY 
+      pps.id, pps.title, pps.difficulty, pps.time, IFNULL(ps.status, 'unsolved')
+    
+    ORDER BY
+      ${sortBy} ${order}
+    LIMIT ? OFFSET ?;`;
+
+    const problems = await query(queryText, [userId, limit, offset]);
     return problems;
   } catch (error) {
     logger.error(`Error fetching problems for user ID: ${userId}`, error);
     throw new Error("Failed to fetch code problems");
   }
 };
+export const getTotalProblemsCountQuery = async () => {
+  try {
+    const queryText = `
+      SELECT COUNT(*) AS totalCount 
+      FROM programming_problem_statements 
+      WHERE is_active = 1;`;
+    const result = await query(queryText);
+    return result[0].totalCount;
+  } catch (error) {
+    logger.error("Error fetching total problems count", error);
+    throw new Error("Failed to fetch total problems count");
+  }
+}
+
 
 export const getProblemByIdQuery = async (problemId, userId) => {
   try {
