@@ -1,7 +1,7 @@
 import { query } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 
-export const getAllProblemsQuery = async (userId, offset, limit, sortBy, order) => {
+export const getAllProblemsQuery = async (userId, search,   offset, limit, sortBy, order) => {
   try {
     const queryText = `
     SELECT 
@@ -40,7 +40,9 @@ export const getAllProblemsQuery = async (userId, offset, limit, sortBy, order) 
       ON attempted.question_id = pps.id
     LEFT JOIN programming_submissions solved 
       ON solved.question_id = pps.id AND solved.status = 'passed'
+    
     WHERE pps.is_active = 1
+        AND pps.title LIKE ?
 
     GROUP BY 
       pps.id, pps.title, pps.difficulty, pps.time, IFNULL(ps.status, 'unsolved')
@@ -49,7 +51,7 @@ export const getAllProblemsQuery = async (userId, offset, limit, sortBy, order) 
       ${sortBy} ${order}
     LIMIT ? OFFSET ?;`;
 
-    const problems = await query(queryText, [userId, limit, offset]);
+    const problems = await query(queryText, [userId, search, limit, offset]);
     return problems;
   } catch (error) {
     logger.error(`Error fetching problems for user ID: ${userId}`, error);

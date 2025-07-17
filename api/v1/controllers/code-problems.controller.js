@@ -9,20 +9,28 @@ import logger from "../../../config/logger.js";
 
 export const getAllProblems = async (req, res) => {
    const userId = req.user.userId; 
-   const page = parseInt(req.query.page) || 1; 
-   const limit = parseInt(req.query.limit) || 10;
-   const offset = (page - 1) * limit;
+   let page = parseInt(req.query.page) || 1; 
+   let limit = parseInt(req.query.limit) || 10;
+   let offset = (page - 1) * limit;
+   const search = `%${req.query.search || ''}%`;
 
    const sortBy = req.query.sortBy || 'title';
-   const order = req.query.order?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+   const order = ['ASC', 'DESC'].includes(req.query.order?.toUpperCase()) ? req.query.order.toUpperCase() : 'ASC';
 
    const allowedSortFields = ['title', 'difficulty','status'];
    let sortField = allowedSortFields.includes(sortBy) ? `pps.${sortBy}` : 'pps.title';
 
+   if(search.trim().length>2) {
+      limit = 10;
+      page = 1;
+      offset = (page - 1) * limit; 
+   }
+   logger.debug(`Search ${search}`);
    try {
       logger.info(`Fetching all problems for user ID: ${userId}`);
       logger.debug(`Sorting by: ${sortField} ${order}, Page: ${page}, Limit: ${limit}`);
-      const problems = await getAllProblemsQuery(userId, offset, limit, sortField, order);
+      const problems = await getAllProblemsQuery(userId, search, offset, limit, sortField, order);
+
       problems.forEach(problem => {
          problem.tags = problem.tags ? problem.tags.split(', ') : [];
          problem.completionRate = parseFloat(problem.completionRate);
