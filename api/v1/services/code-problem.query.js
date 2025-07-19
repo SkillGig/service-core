@@ -165,3 +165,62 @@ export const getDetailsByLanguageIdQuery = async (languageId,problemId) => {
     throw new Error("Failed to fetch language details");
   }
 };
+
+export const getProblemTestCasesQuery = async (problemId) => {
+  try {
+    const queryText = `
+    SELECT ptc.id, ptc.input,ptc.output FROM programming_test_cases ptc
+    WHERE question_id = ?`;
+
+    const problem = await query(queryText, [problemId]);
+    return problem;
+  } catch (error) {
+    logger.error(`Error fetching problem with ID: ${problemId} for user ID: ${userId}`, error);
+    throw new Error("Failed to fetch code problem");
+  }
+}
+
+export const submitProblemQuery = async (userId, problemId, languageId, sourceCode, status, passedCount, failedCount) => {
+  try {
+    const queryText = `
+      INSERT INTO programming_submissions (user_id, 
+              question_id, 
+              language_id, 
+              code, 
+              status, 
+              submission_at, 
+              test_case_pass_count, 
+              test_case_fail_count)
+      VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`;
+
+    const result = await query(queryText, [userId, problemId, languageId, sourceCode, status, passedCount, failedCount]);
+    return result.insertId;
+  } catch (error) {
+    logger.error(`Error submitting problem for user ID: ${userId} and problem ID: ${problemId}`, error);
+    throw new Error("Failed to submit code problem");
+  }
+};
+
+export const insertTestCaseResultsQuery = async (submissionId, results) => {
+  try {
+    const queryText = `
+      INSERT INTO programming_submission_test_cases (submission_id, test_case_id, status, output, time, memory, error, judge0_token)
+      VALUES ?`;
+
+    const values = results.map(result => [
+      submissionId,
+      result.testCaseId,
+      result.status == "Accepted" ? "passed" : "failed",
+      result.actualOutput,
+      result.time,
+      result.memory,
+      result.error,
+      result.token
+    ]);
+
+    await query(queryText, [values]);
+  } catch (error) {
+    logger.error(`Error inserting test case results for submission ID: ${submissionId}`, error);
+    throw new Error("Failed to insert test case results");
+  }
+};
