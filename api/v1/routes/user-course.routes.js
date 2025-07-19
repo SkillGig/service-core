@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticateUserTokenMiddleware } from "../middlewares/user.handler.js";
 import {
   getCourseDetails,
+  getUserCourseDetailsController,
   getUserCourseModuleDetailsController,
   getUserCourseSummaryController,
   getUserCurrentOngoingCourseDetailsController,
@@ -25,6 +26,12 @@ router.get(
   "/module-details",
   authenticateUserTokenMiddleware,
   getUserCourseModuleDetailsController
+);
+
+router.get(
+  "/all-module-details",
+  authenticateUserTokenMiddleware,
+  getUserCourseDetailsController
 );
 
 // Ongoing Courses API

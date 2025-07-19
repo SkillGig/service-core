@@ -4,6 +4,8 @@ import {
   transformCourseSummary,
   transformModuleData,
   transformModuleDetails,
+  transformAllModuleDetails,
+  transformAllModuleDetailsForNotEnrolledCourse,
 } from "../helpers/common.helper.js";
 import {
   getModuleLevelCourseProgressQueryWithChapters,
@@ -24,6 +26,8 @@ import {
   getUserRoadmapOngoingCourseQuery,
   getUserRoadmapUpcomingCoursesQuery,
   getUserEnrolledRoadmapsQuery,
+  getModuleDetailsBasedOnRoadmapCourseIdQuery,
+  checkIfCourseIsAlreadyEnrolledToCourseQuery,
 } from "../services/user-common.query.js";
 
 export const getCourseDetails = async (req, res) => {
@@ -306,7 +310,7 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
             progressPercent: course.progressPercent,
             currentModuleWeek: course.currentModuleWeek,
             currentSectionId: course.currentSectionId,
-            courseStatus: 'in-progress',
+            courseStatus: "in-progress",
             currentChapter: {
               chapterId: course.currentChapterId,
               title: course.chapterTitle,
@@ -366,6 +370,60 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
     return sendApiError(
       res,
       { notifyUser: error?.message ?? "Something went wrong. Please try again!" },
+      500
+    );
+  }
+};
+
+export const getUserCourseDetailsController = async (req, res) => {
+  const userId = req.user.userId;
+  const { roadmapCourseId } = req.query;
+
+  if (!roadmapCourseId) {
+    return sendApiError(res, { notifyUser: "Invalid Roadmap Course Id" }, 400);
+  }
+
+  try {
+    // check if the user is enrolled in the course
+    const courseEnrolledStatus = await checkIfCourseIsAlreadyEnrolledToCourseQuery(
+      userId,
+      roadmapCourseId
+    );
+
+    let transformedAllModuleDetails;
+
+    if (!courseEnrolledStatus) {
+      // User is not enrolled - get basic course structure
+      const userCourseModuleDetails = await getModuleDetailsBasedOnRoadmapCourseIdQuery(
+        roadmapCourseId
+      );
+      transformedAllModuleDetails =
+        transformAllModuleDetailsForNotEnrolledCourse(userCourseModuleDetails);
+      logger.debug(
+        transformedAllModuleDetails,
+        `data being received: [transformAllModuleDetailsForNotEnrolledCourse/getUserCourseDetailsController]`
+      );
+    } else {
+      // User is enrolled - get detailed progress data
+      const userCourseModuleDetails = await getModuleLevelCourseProgressQueryWithChapters(
+        userId,
+        roadmapCourseId
+      );
+      transformedAllModuleDetails = transformAllModuleDetails(userCourseModuleDetails);
+      logger.debug(
+        transformedAllModuleDetails,
+        `data being received: [transformAllModuleDetails/getUserCourseDetailsController]`
+      );
+    }
+
+    return sendApiResponse(res, transformedAllModuleDetails);
+  } catch (error) {
+    logger.error(error, `error being received: [getUserCourseDetailsController]`);
+    return sendApiError(
+      res,
+      {
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
+      },
       500
     );
   }

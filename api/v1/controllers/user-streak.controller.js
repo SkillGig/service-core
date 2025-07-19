@@ -6,7 +6,6 @@ import {
   findTemplateMappingForUserWithOrgQuery,
   getCurrentStreakCount,
   getDayTaskDetails,
-  getOrgLeaderboardWithCurrentUser,
   getUserCompletedTaskDescriptionsToday,
   getUserCreatedDate,
   getUserOrgId,
@@ -179,28 +178,6 @@ export const fetchTaskDetailsForDay = async (req, res) => {
     return sendApiError(
       res,
       { notifyUser: "Could not fetch task details" },
-      500
-    );
-  }
-};
-
-export const fetchOrgLeaderboardWithRank = async (req, res) => {
-  const userId = req.user.userId;
-
-  logger.debug(
-    userId,
-    `data being received: [fetchOrgLeaderboardWithRank/details]`
-  );
-  try {
-    const orgDetails = await getUserOrgId(userId);
-    const orgId = orgDetails[0].orgId;
-    const leaderboard = await getOrgLeaderboardWithCurrentUser(userId, orgId);
-    return sendApiResponse(res, leaderboard);
-  } catch (err) {
-    logger.error(err, "[fetchOrgLeaderboardWithRank/error]");
-    return sendApiError(
-      res,
-      { notifyUser: "Unable to fetch leaderboard." },
       500
     );
   }
