@@ -33,5 +33,10 @@
         "secretKey": "KtHa/Gk7vCDQX0wrhMtuF3of0lqD7BjXMoGmdIgx"
       }
     }
+  },
+  "programming":{
+    "codeExecution":{
+      "baseUrl":"http://localhost:2358"
+    }
   }
 }
