@@ -175,7 +175,7 @@ export const getProblemTestCasesQuery = async (problemId) => {
     const problem = await query(queryText, [problemId]);
     return problem;
   } catch (error) {
-    logger.error(`Error fetching problem with ID: ${problemId} for user ID: ${userId}`, error);
+    logger.error(`Error fetching problem with ID: ${problemId}`, error);
     throw new Error("Failed to fetch code problem");
   }
 }
