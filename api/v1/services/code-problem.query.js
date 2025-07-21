@@ -1,8 +1,37 @@
 import { query } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 
-export const getAllProblemsQuery = async (userId, search,   offset, limit, sortBy, order) => {
+export const getAllProblemsQuery = async (userId, search, offset, limit, sortBy, order, difficulty, topic, status) => {
   try {
+    
+    let filters = '';
+    const values = [userId];
+
+    if (difficulty) {
+      filters += ` AND pps.difficulty = ?`;
+      values.push(difficulty);
+    }
+    if (topic) {
+      filters += ` AND pt.name = ?`;
+      values.push(topic);
+    }
+    if (status) {
+      if (status === 'solved') {
+        filters += ` AND ps.status = ?`;
+      } else if (status === 'unsolved') {
+        filters += ` AND (ps.status IS NULL OR ps.status != ?)`;
+      }
+      values.push('passed');
+    }
+
+    if(search.trim().length>0) {
+      filters = `AND pps.title LIKE ?`;
+      values.push(`%${search}%`);
+    }
+
+    logger.debug(`Filters: ${filters}`);
+    logger.debug(`Values: ${values}`);
+
     const queryText = `
     SELECT 
       pps.id AS id,
@@ -11,7 +40,7 @@ export const getAllProblemsQuery = async (userId, search,   offset, limit, sortB
       pps.time AS time,
       IFNULL(ps.status, 'unsolved') AS userStatus,
       ps.latest_submission_at AS latestSubmissionAt,
-      GROUP_CONCAT(pt.name ORDER BY pt.name SEPARATOR ', ') AS tags,
+      GROUP_CONCAT(DISTINCT pt.name ORDER BY pt.name SEPARATOR ', ') AS tags,
       
       COUNT(DISTINCT solved.user_id) AS users_solved,
       COUNT(DISTINCT attempted.user_id) AS users_attempted,
@@ -42,7 +71,7 @@ export const getAllProblemsQuery = async (userId, search,   offset, limit, sortB
       ON solved.question_id = pps.id AND solved.status = 'passed'
     
     WHERE pps.is_active = 1
-        AND pps.title LIKE ?
+        ${filters}
 
     GROUP BY 
       pps.id, pps.title, pps.difficulty, pps.time, IFNULL(ps.status, 'unsolved')
@@ -51,7 +80,12 @@ export const getAllProblemsQuery = async (userId, search,   offset, limit, sortB
       ${sortBy} ${order}
     LIMIT ? OFFSET ?;`;
 
-    const problems = await query(queryText, [userId, search, limit, offset]);
+    
+    values.push(limit, offset);
+    logger.debug("query values", values);
+
+    logger.debug(`Executing query: ${queryText}`);
+    const problems = await query(queryText, values);
     return problems;
   } catch (error) {
     logger.error(`Error fetching problems for user ID: ${userId}`, error);

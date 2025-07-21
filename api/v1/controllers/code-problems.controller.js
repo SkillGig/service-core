@@ -14,12 +14,13 @@ import axios from "axios";
 import { readFileToNconf } from "../../../config/index.js";
 
 const nconf = readFileToNconf("development/keys.json");
+
 export const getAllProblems = async (req, res) => {
   const userId = req.user.userId;
   let page = parseInt(req.query.page) || 1;
   let limit = parseInt(req.query.limit) || 10;
   let offset = (page - 1) * limit;
-  const search = `%${req.query.search || ""}%`;
+  const search = req.query.search || "";
 
   const sortBy = req.query.sortBy || "title";
   const order = ["ASC", "DESC"].includes(req.query.order?.toUpperCase())
@@ -27,14 +28,22 @@ export const getAllProblems = async (req, res) => {
     : "ASC";
 
   const allowedSortFields = ["title", "difficulty", "status"];
-  let sortField = allowedSortFields.includes(sortBy)
+  const sortField = allowedSortFields.includes(sortBy)
     ? `pps.${sortBy}`
     : "pps.title";
 
-  if (search.trim().length > 2) {
+
+  let difficulty = req.query.difficulty || null;
+  let status = req.query.status || null;
+  let topic = req.query.topic || null;
+
+  if (search.trim().length > 0) {
     limit = 10;
     page = 1;
-    offset = (page - 1) * limit;
+    offset = 0;
+    difficulty = null;
+    status = null;
+    topic = null;
   }
   logger.debug(`Search ${search}`);
   try {
@@ -48,7 +57,10 @@ export const getAllProblems = async (req, res) => {
       offset,
       limit,
       sortField,
-      order
+      order,
+      difficulty,
+      topic,
+      status
     );
 
     problems.forEach((problem) => {
