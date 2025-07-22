@@ -13,6 +13,7 @@ import {
 import UserStreaksRoutes from "./user-streak.routes.js";
 import UserRoadmapMilestonesRoutes from "./user-roadmap.routes.js";
 import UserCourseRoutes from "./user-course.routes.js";
+import UserOnboardingRoutes from "./user-onboarding.routes.js"; 
 
 const router = Router();
 
@@ -23,6 +24,8 @@ router.use("/streaks", UserStreaksRoutes);
 router.use("/course", UserCourseRoutes);
 
 router.use('/roadmap', UserRoadmapMilestonesRoutes);
+
+router.use('/onboarding', UserOnboardingRoutes)
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
