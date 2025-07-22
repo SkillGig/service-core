@@ -84,7 +84,6 @@ export const getAllProblemsQuery = async (userId, search, offset, limit, sortBy,
     values.push(limit, offset);
     logger.debug("query values", values);
 
-    logger.debug(`Executing query: ${queryText}`);
     const problems = await query(queryText, values);
     return problems;
   } catch (error) {

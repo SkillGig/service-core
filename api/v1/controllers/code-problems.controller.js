@@ -252,14 +252,13 @@ export const submitProblem = async (req, res) => {
           token: response.data.token
         });
       } catch (err) {
-        failed++;
-        results.push({
-          testCaseId: testCase.id,
-          input: stdin,
-          expected_output,
-          error: err.message,
-          status: "Error",
-        });
+        logger.error(
+          `Error running test case ID: ${testCase.id} for problem ID: ${problemId} by user ID: ${userId}`,
+          err
+        );
+        throw new Error(
+          `Error running test case ID: ${testCase.id} - ${err.message}`
+        );
       }
     }
     logger.info(
