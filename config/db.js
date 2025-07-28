@@ -1,13 +1,16 @@
 import { createPool } from "mysql2";
+import { readFileToNconf } from "./index.js";
+
+const nconf = readFileToNconf();
 
 const dbConfig = {
-  host: "lms-stage.cri6wqugy0ti.ap-south-1.rds.amazonaws.com",
-  user: "admin",
-  password: "1BlackHorse>2BlackCar",
-  database: "lms-backend",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  host: nconf.get("dbConfig:host"),
+  user: nconf.get("dbConfig:user"),
+  password: nconf.get("dbConfig:password"),
+  database: nconf.get("dbConfig:database"),
+  waitForConnections: nconf.get("dbConfig:waitForConnections"),
+  connectionLimit: nconf.get("dbConfig:connectionLimit"),
+  queueLimit: nconf.get("dbConfig:queueLimit"),
   timezone: "+05:30",
   dateStrings: true,
 };
