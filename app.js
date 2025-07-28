@@ -48,7 +48,7 @@ app.listen(port, () => {
       process.exit(1);
     }
     logger.info(
-      `Service Core connected to the database and server is up and running on PORT: ${port}`
+      `Service Core connected to the database and server is up and running on PORT: ${port} in mode : ${process.env.NODE_ENV}`
     );
   });
 });
