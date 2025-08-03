@@ -10,6 +10,7 @@ import {
   fetchUserNotificationsPaginated,
   getAllRoadmapsAvailableForUserToEnroll,
   getCourseDetailsQuery,
+  getCourseFaqsQuery,
   getCourseLearningsQuery,
   getCourseModulesQuery,
   getCourseReviewsQuery,
@@ -210,6 +211,7 @@ export const getCourseDetails = async (req, res) => {
       const learnings = await getCourseLearningsQuery(courseId);
       const reviews = await getCourseReviewsQuery(courseId);
       const moduleData = await getCourseModulesQuery(courseId);
+      const faqs = await getCourseFaqsQuery(courseId);
 
       // Transform the module data to the desired format
       const transformedModules = transformModuleData(moduleData);
@@ -220,6 +222,7 @@ export const getCourseDetails = async (req, res) => {
         tags,
         learnings,
         reviews,
+        faqs,
         ...transformedModules,
       });
     } else {
