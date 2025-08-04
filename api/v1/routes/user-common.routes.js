@@ -1,55 +1,47 @@
 import { Router } from "express";
 import { authenticateUserTokenMiddleware } from "../middlewares/user.handler.js";
 import {
-  fetchUserSelectedRoadmaps,
   getAllUserNotifications,
   markNotificationsAsSeen,
   enrollUserToRoadmap,
   userConfigController,
-  getRoadmapDetails,
-  getCourseDetails,
+  unlockCourseForTheUserController,
+  unlockModuleUnderCourseController,
+  unlockSectionUnderCourseController,
+  unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserCodeProblemsRoute from "./code-problems.route.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
+import UserRoadmapMilestonesRoutes from "./user-roadmap.routes.js";
+import UserCourseRoutes from "./user-course.routes.js";
+import UserOnboardingRoutes from "./user-onboarding.routes.js"; 
 
 const router = Router();
 
-router.use("/streaks", authenticateUserTokenMiddleware, UserStreaksRoutes);
+router.use("/streaks", UserStreaksRoutes);
 
-router.use("/config", authenticateUserTokenMiddleware, userConfigController);
+router.use("/course", UserCourseRoutes);
 
 router.use("/code-problems", UserCodeProblemsRoute)
 
-router.post(
-  "/enroll-roadmap",
-  authenticateUserTokenMiddleware,
-  enrollUserToRoadmap
-);
+router.use('/roadmap', UserRoadmapMilestonesRoutes);
 
-router.get(
-  "/roadmap-details",
-  authenticateUserTokenMiddleware,
-  getRoadmapDetails
-);
+router.use('/onboarding', UserOnboardingRoutes)
 
-router.get(
-  "/course-details",
-  authenticateUserTokenMiddleware,
-  getCourseDetails
-);
+router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
-router.get(
-  "/roadmaps",
-  authenticateUserTokenMiddleware,
-  fetchUserSelectedRoadmaps
-);
+router.post("/enroll-roadmap", authenticateUserTokenMiddleware, enrollUserToRoadmap);
 
-router.get(
-  "/notifications/all",
-  authenticateUserTokenMiddleware,
-  getAllUserNotifications
-);
+router.post("/enroll-course", authenticateUserTokenMiddleware, unlockCourseForTheUserController);
 
+router.post("/unlock-module", authenticateUserTokenMiddleware, unlockModuleUnderCourseController);
+
+router.post("/unlock-section", authenticateUserTokenMiddleware, unlockSectionUnderCourseController);
+
+router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnderCourseController);
+
+router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
+ 
 router.patch(
   "/notifications/mark-as-seen",
   authenticateUserTokenMiddleware,

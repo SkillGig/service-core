@@ -27,3 +27,23 @@ export const query = (sql, params) => {
     });
   });
 };
+
+export const getConnection = () => {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) return reject(err);
+      resolve(connection);
+    });
+  });
+};
+
+export const queryWithConn = (conn, sql, params) => {
+  return new Promise((resolve, reject) => {
+    conn.query(sql, params, (error, results) => {
+      if (error) {
+        return reject(error);
+      }
+      resolve(results);
+    });
+  });
+};

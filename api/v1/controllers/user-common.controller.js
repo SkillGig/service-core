@@ -1,21 +1,26 @@
+import { getConnection, queryWithConn } from "../../../config/db.js";
 import logger from "../../../config/logger.js";
 import { sendApiError, sendApiResponse } from "../helpers/api.helper.js";
+import { transformRoadmapData } from "../helpers/common.helper.js";
+import { sendModuleUnlockedNotification } from "../helpers/notification.helper.js";
 import {
-  transformRoadmapData,
-  transformModuleData,
-} from "../helpers/common.helper.js";
+  enrollUserToTheCourseInRoadmap,
+  unlockChapterToUserUnderCourse,
+  unlockModuleOfCourseToTheUser,
+  unlockSectionUnderCourse,
+} from "../helpers/unlockers.helper.js";
 import {
+  checkUserOrgMultipleRoadmapsEnrollmentQuery,
   countUserNotifications,
   countUserUnreadNotifications,
   fetchUserNotificationsPaginated,
+  getAllCoursesMappedUnderRoadmapQuery,
   getAllRoadmapsAvailableForUserToEnroll,
-  getCourseDetailsQuery,
-  getCourseLearningsQuery,
-  getCourseModulesQuery,
-  getCourseReviewsQuery,
-  getCourseTagsQuery,
+  getAllRoadmapsEnrolledByUserQuery,
+  getCourseMappingDetailsQuery,
+  getPrerequisiteCourseQuery,
   getRoadmapDetailsQuery,
-  getTutorDetailsQuery,
+  getUserCourseCompletionStatusQuery,
   getUserRoadmapQuery,
   markUserNotificationsAsSeen,
   setUserRoadmapQuery,
@@ -56,11 +61,7 @@ export const getAllUserNotifications = async (req, res) => {
     });
   } catch (err) {
     logger.error(err, "[getAllUserNotifications]");
-    return sendApiError(
-      res,
-      { notifyUser: "Unable to fetch notifications" },
-      500
-    );
+    return sendApiError(res, { notifyUser: "Unable to fetch notifications" }, 500);
   }
 };
 
@@ -73,11 +74,7 @@ export const markNotificationsAsSeen = async (req, res) => {
     return sendApiResponse(res, { updatedCount: result.affectedRows });
   } catch (err) {
     logger.error(err, "[markNotificationsAsSeen]");
-    return sendApiError(
-      res,
-      { notifyUser: "Failed to mark notifications as seen." },
-      500
-    );
+    return sendApiError(res, { notifyUser: "Failed to mark notifications as seen." }, 500);
   }
 };
 
@@ -97,11 +94,7 @@ export const userConfigController = async (req, res) => {
         },
       });
     }
-    return sendApiError(
-      res,
-      { notifyUser: "Invalid User!", action: "logout" },
-      404
-    );
+    return sendApiError(res, { notifyUser: "Invalid User!", action: "logout" }, 404);
   } catch (error) {
     logger.error(error, `error being received: [userConfigController]`);
     return sendApiError(
@@ -118,24 +111,135 @@ export const enrollUserToRoadmap = async (req, res) => {
   const userId = req.user.userId;
   const { roadmapId } = req.body;
 
-  if (!roadmapId) {
-    return sendApiError(res, { notifyUser: "Roadmap ID is required" }, 400);
-  }
-
+  let conn;
   try {
-    const result = await setUserRoadmapQuery(userId, roadmapId);
-    if (result.affectedRows > 0) {
-      return sendApiResponse(res, { message: "Roadmap updated successfully" });
-    } else {
-      return sendApiError(res, { notifyUser: "Failed to update roadmap" }, 500);
+    if (!roadmapId) {
+      logger.warn({ userId, roadmapId }, "Invalid roadmap ID provided for enrollment");
+      return sendApiError(res, { notifyUser: "Invalid roadmap to enroll!" }, 400);
+    }
+    if (!userId) {
+      logger.warn({ roadmapId }, "User ID not found in request");
+      return sendApiError(res, { notifyUser: "User authentication required!" }, 401);
+    }
+    logger.info({ userId, roadmapId }, "Starting roadmap enrollment process");
+
+    // Use a single connection for the transaction
+    conn = await getConnection();
+    try {
+      // Check if user is already enrolled in this roadmap
+      const existingRoadmaps = await getAllRoadmapsEnrolledByUserQuery(userId, conn);
+      const isAlreadyEnrolled = existingRoadmaps.some((roadmap) => roadmap.roadmapId === roadmapId);
+      if (isAlreadyEnrolled) {
+        // instead of a flag have the number of roadmaps that user can enroll at a time in org level
+        const allowsMultipleEnrollments = await checkUserOrgMultipleRoadmapsEnrollmentQuery(
+          userId,
+          conn
+        );
+        if (!allowsMultipleEnrollments) {
+          logger.info(
+            { userId, roadmapId },
+            "User already enrolled in roadmap and organization doesn't allow multiple enrollments"
+          );
+          conn.release();
+          return sendApiError(res, { notifyUser: "You are already enrolled in this roadmap" }, 400);
+        }
+        logger.info(
+          { userId, roadmapId },
+          "User already enrolled but organization allows multiple enrollments"
+        );
+      }
+      await queryWithConn(conn, "START TRANSACTION");
+      // Step 1: Enroll user to roadmap
+      const enrollmentResult = await setUserRoadmapQuery(userId, roadmapId, conn);
+      if (enrollmentResult.affectedRows === 0) {
+        throw new Error("Failed to enroll user in roadmap - no database changes made");
+      }
+      // Step 2: Get all courses mapped under the roadmap
+      const allCoursesInRoadmap = await getAllCoursesMappedUnderRoadmapQuery(roadmapId, conn);
+      if (!allCoursesInRoadmap || allCoursesInRoadmap.length === 0) {
+        throw new Error("No courses found in this roadmap");
+      }
+      logger.debug(
+        {
+          userId,
+          roadmapId,
+          coursesCount: allCoursesInRoadmap.length,
+          userRoadmapId: enrollmentResult.insertId,
+        },
+        "Found courses in roadmap, proceeding with first course enrollment"
+      );
+      // Step 3: Enroll user to the first course in the roadmap
+
+      const firstCourseEnrollment = await enrollUserToTheCourseInRoadmap(
+        {
+          courseId: allCoursesInRoadmap[0]?.courseId,
+          roadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
+          isWeeklyUnlock: allCoursesInRoadmap[0]?.isWeeklyUnlock,
+        },
+        userId,
+        enrollmentResult.insertId,
+        conn
+      );
+      if (!firstCourseEnrollment.success) {
+        throw new Error(`First course enrollment failed: ${firstCourseEnrollment.message}`);
+      }
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      // send notification for roadmap enrollment
+
+      await sendModuleUnlockedNotification({
+        userId,
+        roadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
+        moduleWeek: null,
+        sectionId: null,
+        contentRefId: null,
+        title: "Roadmap Enrolled",
+        body: `You have successfully enrolled in the roadmap: ${allCoursesInRoadmap[0]?.roadmapName}`,
+        actionUrl: `/user/roadmaps/${enrollmentResult.insertId}`,
+        type: "roadmap-enrolled",
+        source: "system",
+      });
+      return sendApiResponse(res, {
+        message: "Roadmap enrolled successfully",
+        data: {
+          roadmapId,
+          enrolledRoadmapId: enrollmentResult.insertId,
+          enrolledRoadmapCourseId: allCoursesInRoadmap[0]?.roadmapCourseId,
+        },
+      });
+    } catch (transactionError) {
+      try {
+        await queryWithConn(conn, "ROLLBACK");
+      } catch (rollbackError) {
+        logger.error(
+          { rollbackError: rollbackError.message, userId, roadmapId },
+          "Rollback failed during roadmap enrollment"
+        );
+      }
+      if (conn) conn.release();
+      logger.error(
+        { error: transactionError.message, userId, roadmapId },
+        "Transaction failed during roadmap enrollment"
+      );
+      let errorMessage = "Something went wrong. Please try again!";
+      let statusCode = 500;
+      if (transactionError.message.includes("No courses found")) {
+        errorMessage = "No courses found in this roadmap";
+        statusCode = 404;
+      } else if (transactionError.message.includes("Failed to enroll")) {
+        errorMessage = "Failed to enroll in roadmap";
+        statusCode = 500;
+      }
+      return sendApiError(res, { notifyUser: errorMessage }, statusCode);
     }
   } catch (error) {
-    logger.error(error, "[enrollUserToRoadmap]");
-    return sendApiError(
-      res,
-      { notifyUser: "Something went wrong. Please try again!" },
-      500
+    logger.error(
+      { error: error.message, stack: error.stack, userId, roadmapId },
+      "[enrollUserToRoadmap] Unexpected error during enrollment"
     );
+    return sendApiError(res, { notifyUser: "Something went wrong. Please try again!" }, 500);
+  } finally {
+    if (conn) conn.release();
   }
 };
 
@@ -163,7 +267,6 @@ export const fetchUserSelectedRoadmaps = async (req, res) => {
 };
 
 export const getRoadmapDetails = async (req, res) => {
-  const userId = req.user.userId;
   const { roadmapId } = req.query;
 
   if (!roadmapId) {
@@ -176,11 +279,7 @@ export const getRoadmapDetails = async (req, res) => {
       const transformedData = transformRoadmapData(roadmapDetails);
       return sendApiResponse(res, transformedData);
     } else {
-      return sendApiError(
-        res,
-        { notifyUser: "Roadmap not found or not enrolled" },
-        404
-      );
+      return sendApiError(res, { notifyUser: "Roadmap not found or not enrolled" }, 404);
     }
   } catch (error) {
     logger.error(error, `error being received: [getRoadmapDetails]`);
@@ -194,43 +293,270 @@ export const getRoadmapDetails = async (req, res) => {
   }
 };
 
-export const getCourseDetails = async (req, res) => {
-  const { courseId } = req.query;
+export const unlockCourseForTheUserController = async (req, res) => {
+  const userId = req.user.userId || req.body.userId;
+  const { roadmapCourseId, roadmapId } = req.body;
 
-  if (!courseId) {
-    return sendApiError(res, { notifyUser: "Course ID is required" }, 400);
+  if (!roadmapCourseId || !roadmapId) {
+    return sendApiError(res, { notifyUser: "Invalid roadmapCourseId or roadmapId" }, 400);
   }
 
+  let conn;
+
   try {
-    // Assuming a function exists to fetch course details by ID
-    const courseDetails = await getCourseDetailsQuery(courseId);
-    if (courseDetails) {
-      const tutorDetails = await getTutorDetailsQuery(courseDetails.tutorId);
-      const tags = await getCourseTagsQuery(courseId);
-      const learnings = await getCourseLearningsQuery(courseId);
-      const reviews = await getCourseReviewsQuery(courseId);
-      const moduleData = await getCourseModulesQuery(courseId);
-
-      // Transform the module data to the desired format
-      const transformedModules = transformModuleData(moduleData);
-
-      return sendApiResponse(res, {
-        courseDetails,
-        tutorDetails,
-        tags,
-        learnings,
-        reviews,
-        ...transformedModules,
-      });
+    conn = await getConnection();
+    const prerequisiteCourse = await getPrerequisiteCourseQuery(roadmapCourseId);
+    if (!prerequisiteCourse) {
+      const courseDetailsToEnroll = await getCourseMappingDetailsQuery(roadmapCourseId);
+      if (!courseDetailsToEnroll) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        return sendApiError(res, { notifyUser: "Course not found" }, 404);
+      }
+      await queryWithConn(conn, "START TRANSACTION");
+      const unlockResult = await enrollUserToTheCourseInRoadmap(
+        {
+          courseId: courseDetailsToEnroll.courseId,
+          roadmapCourseId,
+          isWeeklyUnlock: courseDetailsToEnroll.isWeeklyUnlock,
+        },
+        userId,
+        roadmapId,
+        conn
+      );
+      if (unlockResult.success) {
+        await queryWithConn(conn, "COMMIT");
+        conn.release();
+        // send notification for course unlock
+        await sendModuleUnlockedNotification({
+          userId,
+          roadmapCourseId,
+          moduleWeek: null,
+          sectionId: null,
+          contentRefId: null,
+          title: "Course Unlocked",
+          body: `You have successfully unlocked the course.`,
+          actionUrl: `/user/courses/${roadmapCourseId}`,
+          type: "course-enrolled",
+          source: "system",
+        });
+        return sendApiResponse(res, {
+          message: "Course unlocked successfully",
+          data: {
+            roadmapCourseId,
+            roadmapId,
+          },
+        });
+      }
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+      return sendApiError(res, { notifyUser: unlockResult.message }, 500);
+    }
+    // check if the prerequisite course is already completed by the user
+    const isPrerequisiteCompleted = await getUserCourseCompletionStatusQuery(
+      userId,
+      prerequisiteCourse.roadmapId,
+      prerequisiteCourse.prerequisiteCourseId,
+      conn
+    );
+    if (isPrerequisiteCompleted && isPrerequisiteCompleted.isCompleted) {
+      const courseDetailsToEnroll = await getCourseMappingDetailsQuery(roadmapCourseId);
+      if (!courseDetailsToEnroll) {
+        await queryWithConn(conn, "ROLLBACK");
+        conn.release();
+        return sendApiError(res, { notifyUser: "Course not found" }, 404);
+      }
+      await queryWithConn(conn, "START TRANSACTION");
+      const unlockResult = await enrollUserToTheCourseInRoadmap(
+        {
+          courseId: courseDetailsToEnroll.courseId,
+          roadmapCourseId,
+          isWeeklyUnlock: courseDetailsToEnroll.isWeeklyUnlock,
+        },
+        userId,
+        roadmapId,
+        conn
+      );
+      if (unlockResult.success) {
+        await queryWithConn(conn, "COMMIT");
+        conn.release();
+        return sendApiResponse(res, {
+          message: "Course unlocked successfully",
+          data: {
+            roadmapCourseId,
+            roadmapId,
+          },
+        });
+      }
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+      return sendApiError(res, { notifyUser: unlockResult.message }, 500);
     } else {
-      return sendApiError(res, { notifyUser: "Course not found" }, 404);
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+      return sendApiError(
+        res,
+        {
+          notifyUser: "You need to complete the prerequisite course before unlocking this course.",
+        },
+        400
+      );
     }
   } catch (error) {
-    logger.error(error, `error being received: [getCourseDetails]`);
+    if (conn) {
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+    }
+    logger.error(error, `error being received: [unlockCourseForTheUser]`);
     return sendApiError(
       res,
       {
         notifyUser: "Something went wrong. Please try again!",
+      },
+      500
+    );
+  }
+};
+
+export const unlockModuleUnderCourseController = async (req, res) => {
+  const userId = req.user.userId || req.body.userId;
+  const { roadmapCourseId, moduleId } = req.body;
+
+  if (!roadmapCourseId || !moduleId) {
+    return sendApiError(res, { notifyUser: "Invalid roadmapCourseId or moduleId" }, 400);
+  }
+
+  let conn;
+  try {
+    conn = await getConnection();
+    await queryWithConn(conn, "START TRANSACTION");
+
+    const unlockModuleResult = await unlockModuleOfCourseToTheUser({
+      userId,
+      roadmapCourseId,
+      moduleId,
+      conn,
+    });
+    if (unlockModuleResult.success) {
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      return sendApiResponse(res, {
+        message: "Module unlocked successfully",
+        data: {
+          roadmapCourseId,
+          moduleId,
+        },
+      });
+    }
+    await queryWithConn(conn, "ROLLBACK");
+    conn.release();
+    return sendApiError(res, { notifyUser: unlockModuleResult.message }, 500);
+  } catch (error) {
+    logger.error(error, `error being received: [unlockModuleUnderCourseController]`);
+    return sendApiError(
+      res,
+      {
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
+      },
+      500
+    );
+  }
+};
+
+export const unlockSectionUnderCourseController = async (req, res) => {
+  const userId = req.user.userId || req.body.userId;
+  const { roadmapCourseId, sectionId } = req.body;
+
+  if (!roadmapCourseId || !sectionId) {
+    return sendApiError(res, { notifyUser: "Invalid roadmapCourseId or sectionId" }, 400);
+  }
+
+  let conn;
+  try {
+    conn = await getConnection();
+    await queryWithConn(conn, "START TRANSACTION");
+
+    const unlockSectionResult = await unlockSectionUnderCourse({
+      userId,
+      roadmapCourseId,
+      sectionId,
+      conn,
+    });
+    if (unlockSectionResult.success) {
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      return sendApiResponse(res, {
+        message: "Section unlocked successfully",
+        data: {
+          roadmapCourseId,
+          sectionId,
+        },
+      });
+    }
+    await queryWithConn(conn, "ROLLBACK");
+    conn.release();
+    return sendApiError(res, { notifyUser: unlockSectionResult.message }, 500);
+  } catch (error) {
+    logger.error(error, `error being received: [unlockSectionUnderCourseController]`);
+    return sendApiError(
+      res,
+      {
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
+      },
+      500
+    );
+  }
+};
+
+export const unlockChapterUnderCourseController = async (req, res) => {
+  const userId = req.user.userId || req.body.userId;
+  const { roadmapCourseId, sectionId, chapterId } = req.body;
+
+  if (!roadmapCourseId || !sectionId || !chapterId) {
+    return sendApiError(
+      res,
+      { notifyUser: "Invalid roadmapCourseId or sectionId or chapterId" },
+      400
+    );
+  }
+
+  let conn;
+  try {
+    conn = await getConnection();
+    await queryWithConn(conn, "START TRANSACTION");
+
+    const unlockChapterResult = await unlockChapterToUserUnderCourse({
+      userId,
+      roadmapCourseId,
+      sectionId,
+      chapterId,
+      conn,
+    });
+    if (unlockChapterResult.success) {
+      await queryWithConn(conn, "COMMIT");
+      conn.release();
+      return sendApiResponse(res, {
+        message: "Chapter unlocked successfully",
+        data: {
+          roadmapCourseId,
+          chapterId,
+        },
+      });
+    }
+
+    await queryWithConn(conn, "ROLLBACK");
+    conn.release();
+    return sendApiError(res, { notifyUser: unlockChapterResult.message }, 500);
+  } catch (error) {
+    logger.error(error, `error being received: [unlockChapterUnderCourseController]`);
+    if (conn) {
+      await queryWithConn(conn, "ROLLBACK");
+      conn.release();
+    }
+    return sendApiError(
+      res,
+      {
+        notifyUser: error?.message ?? "Something went wrong. Please try again!",
       },
       500
     );

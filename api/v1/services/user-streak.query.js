@@ -431,7 +431,7 @@ export const getOrgLeaderboardWithCurrentUser = async (userId, orgId) => {
         u.id AS userId,
         u.name AS name,
         u.enrolled_at AS createdAt,
-        COALESCE(SUM(ush.xp_earned), 0) AS totalXP,
+        CAST(COALESCE(SUM(ush.xp_earned), 0) AS UNSIGNED) AS totalXP,
         RANK() OVER (
           ORDER BY 
             COALESCE(SUM(ush.xp_earned), 0) DESC,
