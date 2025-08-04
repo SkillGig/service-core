@@ -8,7 +8,6 @@ import {
   getDayTaskDetails,
   getUserCompletedTaskDescriptionsToday,
   getUserCreatedDate,
-  getUserOrgId,
   getUserStreakStatusesForMonth,
   getWeeklyStreakStatus,
   getXPBreakdownAndTotal,

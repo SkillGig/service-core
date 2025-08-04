@@ -21,7 +21,7 @@ import {
   getTutorDetailsQuery,
   userCurrentRoadmapCourseStatusQuery,
   getCourseMappingDetailsQuery,
-  getProjectDetailsQuery,
+  getCourseFaqsQuery,
   getCurrentSectionWithModuleForUserOngoingCourseQuery,
   getUserRoadmapOngoingCourseQuery,
   getUserRoadmapUpcomingCoursesQuery,
@@ -55,6 +55,7 @@ export const getCourseDetails = async (req, res) => {
       moduleData,
       userStatusOfCourse,
       currentModuleDetails,
+      faqs,
     ] = await Promise.all([
       getCourseDetailsQuery(courseId),
       getTutorDetailsQuery(courseIdInfo.tutorId),
@@ -64,6 +65,7 @@ export const getCourseDetails = async (req, res) => {
       getCourseModulesQuery(courseId),
       userCurrentRoadmapCourseStatusQuery({ userId, roadmapId, roadmapCourseId }),
       getCurrentSectionWithModuleForUserOngoingCourseQuery(userId, roadmapCourseId),
+      getCourseFaqsQuery(courseId),
     ]);
 
     if (!courseDetails) {
@@ -153,6 +155,7 @@ export const getCourseDetails = async (req, res) => {
       courseDetails,
       tutorDetails,
       tags,
+      faqs,
       learnings,
       reviews,
       ...transformedModules,

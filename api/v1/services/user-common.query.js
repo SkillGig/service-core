@@ -1753,3 +1753,22 @@ export const getModuleDetailsBasedOnRoadmapCourseIdQuery = async (roadmapCourseI
     throw error;
   }
 };
+
+export const getCourseFaqsQuery = async (courseId) => {
+  logger.debug(courseId, `data being received: [getCourseFaqsQuery]`);
+
+  const queryString = `
+    SELECT question, answer, id as faqId
+    FROM course_faqs
+    WHERE course_id = ? AND is_active = 1
+    ORDER BY display_order ASC;
+  `;
+
+  try {
+    const result = await query(queryString, [courseId]);
+    return result;
+  } catch (error) {
+    logger.error(error, `error being received: [getCourseFaqsQuery/error]`);
+    throw error;
+  }
+};
