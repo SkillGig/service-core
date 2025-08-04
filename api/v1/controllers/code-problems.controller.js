@@ -6,8 +6,10 @@ import {
   getDetailsByLanguageIdQuery,
   getTotalProblemsCountQuery,
   getProblemTestCasesQuery,
+  getJudge0LanguageIdQuery,
   submitProblemQuery,
-  insertTestCaseResultsQuery
+  insertTestCaseResultsQuery,
+  getAllSubmissionsQuery
 } from "../services/code-problem.query.js";
 import logger from "../../../config/logger.js";
 import axios from "axios";
@@ -20,7 +22,16 @@ export const getAllProblems = async (req, res) => {
   let page = parseInt(req.query.page) || 1;
   let limit = parseInt(req.query.limit) || 10;
   let offset = (page - 1) * limit;
-  const search = req.query.search || "";
+
+  if (page < 1) page = 1;
+  if (limit < 1 || limit > 100) limit = 10; 
+  if (offset < 0) offset = 0;
+
+  const search = req.query.search?.trim() || "";
+
+  if (search.length > 50) {
+    return sendApiError(res, { message: "Search query too long" });
+  }
 
   const sortBy = req.query.sortBy || "title";
   const order = ["ASC", "DESC"].includes(req.query.order?.toUpperCase())
@@ -151,6 +162,7 @@ export const runTestCases = async (req, res) => {
       `Running test cases for problem ID: ${problemId} by user ID: ${userId}`
     );
     const { languageId, sourceCode, stdin, expectedOutput } = req.body;
+    const judge0LanguageId = await getJudge0LanguageIdQuery(languageId);
     const url = `${nconf.get(
       "programming:codeExecution:baseUrl"
     )}/submissions?base64_encoded=false&wait=true`;
@@ -159,7 +171,7 @@ export const runTestCases = async (req, res) => {
     const response = await axios.post(
       url,
       {
-        language_id: languageId,
+        language_id: judge0LanguageId,
         source_code: sourceCode,
         stdin,
         expected_output: expectedOutput,
@@ -212,8 +224,9 @@ export const submitProblem = async (req, res) => {
     logger.debug("code execution url", url);
     let passed = 0;
     let failed = 0;
-    let results = [];
-
+    let failedTestCaseResults = [];
+    let allTestCaseResults = [];
+    const judge0LanguageId = await getJudge0LanguageIdQuery(languageId);
     for (const testCase of testCases) {
       const { input: stdin, output: expected_output } = testCase;
 
@@ -221,7 +234,7 @@ export const submitProblem = async (req, res) => {
         const response = await axios.post(
           url,
           {
-            language_id: languageId,
+            language_id: judge0LanguageId,
             source_code: sourceCode,
             stdin,
             expected_output,
@@ -237,19 +250,26 @@ export const submitProblem = async (req, res) => {
         const passedTest = status === "Accepted";
 
         if (passedTest) passed++;
-        else failed++;
-
-        results.push({
+        else {
+          failed++;
+          failedTestCaseResults.push({
+            input: stdin,
+            expectedOutput: expected_output,
+            actualOutput: response.data.stdout,
+            status,
+            time: response.data.time,
+            error: response.data.stderr,
+            compileOutput: response.data.compile_output,
+          });
+        }
+        allTestCaseResults.push({
           testCaseId: testCase.id,
-          input: stdin,
-          expectedOutput: expected_output,
+          status: passedTest ? "Accepted" : "Failed",
           actualOutput: response.data.stdout,
-          status,
           time: response.data.time,
           memory: response.data.memory,
           error: response.data.stderr,
-          compileOutput: response.data.compile_output,
-          token: response.data.token
+          judge0Token: response.data.token
         });
       } catch (err) {
         logger.error(
@@ -264,9 +284,7 @@ export const submitProblem = async (req, res) => {
     logger.info(
       `Test cases run completed for problem ID: ${problemId} by user ID: ${userId}`
     );
-    if(results.length === 0) {
-      return sendApiError(res, 404, "No test cases found for the problem");
-    }
+
     const passedStatus = passed === testCases.length ? "passed" : "failed";
     const submitResultId = await submitProblemQuery(userId, problemId, languageId, sourceCode, passedStatus, passed, failed);
     logger.info(
@@ -274,14 +292,14 @@ export const submitProblem = async (req, res) => {
     );
     sendApiResponse(res, {
       success: true,
-      total: testCases.length,
-      submitId: submitResultId,
-      passed,
-      failed,
-      results,
+      totalTestCases: testCases.length,
+      testCasePassed: passed,
+      testCaseFailed: failed,
+      isPassed: testCases.length === passed,
+      failedTestCases: failedTestCaseResults ?? [],
     });
 
-    await insertTestCaseResultsQuery(submitResultId, results);
+    await insertTestCaseResultsQuery(submitResultId, allTestCaseResults);
     logger.info(
       `Problem submission of test cases completed for user ID: ${userId} with result ID: ${submitResultId}`
     );
@@ -296,3 +314,27 @@ export const submitProblem = async (req, res) => {
     });
   }
 };
+
+export const getAllSubmissions = async(req, res)=>{
+  const { problemId } = req.params;
+  const userId = req.user.userId;
+  try {
+    logger.info(`Fetching all submissions for problem ID: ${problemId} by user ID: ${userId}`);
+    const submissions = await getAllSubmissionsQuery(problemId, userId);
+    
+    if (!submissions || submissions.length === 0) {
+      return sendApiError(res, 404, "No submissions found for this problem");
+    }
+    
+    sendApiResponse(res, {
+      success: true,
+      data: submissions,
+    });
+  } catch (error) {
+    logger.error(`Error fetching submissions for problem ID: ${problemId} by user ID: ${userId}`, error);
+    sendApiError(res, {
+      success: false,
+      message: "Failed to fetch submissions",
+    });
+  }
+}

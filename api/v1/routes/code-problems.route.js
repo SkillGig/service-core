@@ -4,7 +4,8 @@ import { getAllProblems,
    getProblemById, 
    getDetailsByLanguageId,
    runTestCases,
-   submitProblem
+   submitProblem,
+   getAllSubmissions
 } from "../controllers/code-problems.controller.js";
 
 import {
@@ -17,13 +18,18 @@ const router = Router();
 router.get("/", authenticateUserTokenMiddleware, getAllProblems);
 router.get("/:problemId", authenticateUserTokenMiddleware, getProblemById);
 router.get("/:problemId/languages/:languageId", authenticateUserTokenMiddleware, getDetailsByLanguageId);
+router.get("/submissions/:problemId", authenticateUserTokenMiddleware, getAllSubmissions);
 
 router.post("/run/:problemId", 
    runTestCasesValidator,
    authenticateUserTokenMiddleware, 
-   runTestCases);
+   runTestCases
+);
+
 router.post("/submit/:problemId", 
    submitProblemValidator, 
    authenticateUserTokenMiddleware, 
-   submitProblem);
+   submitProblem
+);
+
 export default router;

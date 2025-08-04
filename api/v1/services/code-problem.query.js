@@ -213,6 +213,20 @@ export const getProblemTestCasesQuery = async (problemId) => {
   }
 }
 
+export const getJudge0LanguageIdQuery = async (languageId) => {
+  try {
+    const queryText = `
+      SELECT judge0_id 
+      FROM dim_programming_languages 
+      WHERE id = ?;`;
+    const result = await query(queryText, [languageId]);
+    return result[0]?.judge0_id || null; 
+  } catch (error) {
+    logger.error(`Error fetching Judge0 language ID for language ID: ${languageId}`, error);
+    throw new Error("Failed to fetch Judge0 language ID");
+  }
+};
+
 export const submitProblemQuery = async (userId, problemId, languageId, sourceCode, status, passedCount, failedCount) => {
   try {
     const queryText = `
@@ -255,5 +269,28 @@ export const insertTestCaseResultsQuery = async (submissionId, results) => {
   } catch (error) {
     logger.error(`Error inserting test case results for submission ID: ${submissionId}`, error);
     throw new Error("Failed to insert test case results");
+  }
+};
+
+export const getAllSubmissionsQuery = async (problemId, userId) => {
+  try {
+    const queryText = `
+      SELECT
+           dpl.name AS languageName,
+           dpl.slug AS languageSlug,
+           ps.code,
+           ps.status,
+           ps.submission_at AS submissionAt,
+           ps.test_case_pass_count AS passCount,
+           ps.test_case_fail_count AS failedCount
+      FROM programming_submissions ps
+      LEFT JOIN dim_programming_languages dpl on ps.language_id = dpl.id
+      WHERE ps.question_id = ? AND ps.user_id = ?`;
+
+    const submissions = await query(queryText, [problemId, userId]);
+    return submissions;
+  } catch (error) {
+    logger.error(`Error fetching submissions for problem ID: ${problemId} by user ID: ${userId}`, error);
+    throw new Error("Failed to fetch submissions");
   }
 };
