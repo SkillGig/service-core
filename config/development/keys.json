@@ -37,5 +37,10 @@
   "notificationService": {
     "baseUrl": "http://localhost:4024/notifications",
     "produceNewNotificationUrl": "/produce-user-notification"
+  },
+  "programming": {
+    "codeExecution": {
+      "baseUrl": "http://localhost:2358"
+    }
   }
 }

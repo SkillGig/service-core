@@ -10,6 +10,7 @@ import {
   unlockSectionUnderCourseController,
   unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
+import UserCodeProblemsRoute from "./code-problems.route.js";
 import UserStreaksRoutes from "./user-streak.routes.js";
 import UserRoadmapMilestonesRoutes from "./user-roadmap.routes.js";
 import UserCourseRoutes from "./user-course.routes.js";
@@ -19,9 +20,9 @@ const router = Router();
 
 router.use("/streaks", UserStreaksRoutes);
 
-// router.use("/milestones", UserRoadmapMilestonesRoutes);
-
 router.use("/course", UserCourseRoutes);
+
+router.use("/code-problems", UserCodeProblemsRoute)
 
 router.use('/roadmap', UserRoadmapMilestonesRoutes);
 
