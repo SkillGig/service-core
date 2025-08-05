@@ -343,9 +343,16 @@ export const getMonthlySummary = async (req, res) => {
       return sendApiError(res, { notifyUser: "Month must be between 1 and 12" }, 400);
     }
 
-    // Validate year range (reasonable range)
-    if (yearNum < 2025 || yearNum > 2030) {
-      return sendApiError(res, { notifyUser: "Year must be between 2020 and 2030" }, 400);
+    // Validate year range (current year ± 5)
+    const currentYear = new Date().getFullYear();
+    const minYear = currentYear - 5;
+    const maxYear = currentYear + 5;
+    if (yearNum < minYear || yearNum > maxYear) {
+      return sendApiError(
+        res,
+        { notifyUser: `Year must be between ${minYear} and ${maxYear}` },
+        400
+      );
     }
 
     // Get user's monthly activity data
