@@ -12,6 +12,8 @@ import {
   getDayStreakBreakupQuery,
   getStreakStatusQuery,
   markAnimationSeenQuery,
+  checkDailyLoginQuery,
+  getDailyLoginTaskTemplateQuery,
 } from "../services/user-reward.query.js";
 import Bluebird from "bluebird";
 const Promise = Bluebird;
@@ -517,5 +519,185 @@ export const markAnimationSeen = async (req, res) => {
   } catch (error) {
     logger.error(error, "[markAnimationSeen/error]");
     return sendApiError(res, { notifyUser: "Failed to mark animation as seen" }, 500);
+  }
+};
+
+export const dailyLogin = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    logger.info(`Processing daily login for user: ${userId}`);
+
+    // 1. Check if user has already logged in today
+    const existingLogin = await checkDailyLoginQuery(userId);
+
+    if (existingLogin) {
+      logger.info(
+        `User ${userId} has already logged in today. Transaction ID: ${existingLogin.transactionId}`
+      );
+
+      return sendApiResponse(res, {
+        success: true,
+        alreadyLoggedIn: true,
+        message: "Daily login already recorded for today",
+        data: {
+          transactionId: existingLogin.transactionId,
+          xpAwarded: existingLogin.xpPoints,
+          loginTime: existingLogin.loginTime,
+          taskName: existingLogin.taskName,
+        },
+      });
+    }
+
+    // 2. Get daily login task template
+    const dailyLoginTask = await getDailyLoginTaskTemplateQuery();
+
+    if (!dailyLoginTask) {
+      logger.error("Daily login task template not found or inactive");
+      return sendApiError(res, { notifyUser: "Daily login reward system is not configured" }, 500);
+    }
+
+    // 3. Award XP for daily login (no duplicate tracking data needed for daily login)
+    const additionalTrackingData = {
+      roadmapCourseId: null,
+      moduleWeek: null,
+      courseSectionId: null,
+      courseChapterId: null,
+      quizId: null,
+      projectId: null,
+    };
+
+    await createXPTransactionQuery(
+      userId,
+      dailyLoginTask.id,
+      dailyLoginTask.xpPoints,
+      "TASK",
+      additionalTrackingData
+    );
+
+    // 4. Update user level
+    const levelUpdateResult = await updateUserLevelInfoQuery(userId, dailyLoginTask.xpPoints);
+
+    if (!levelUpdateResult) {
+      throw new Error("Failed to update user level information");
+    }
+
+    const { totalXp, newLevel } = levelUpdateResult;
+
+    // Initialize notifications array
+    const notifications = [];
+
+    // Add XP notification
+    notifications.push({
+      type: "XP_EARNED",
+      data: {
+        userId,
+        xpAwarded: dailyLoginTask.xpPoints,
+        totalXp,
+        taskTemplateId: dailyLoginTask.id,
+        taskType: dailyLoginTask.taskType,
+        rewardTaskType: "daily_login",
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    let response = {
+      success: true,
+      alreadyLoggedIn: false,
+      xpAwarded: dailyLoginTask.xpPoints,
+      totalXp,
+      newLevel: newLevel || null,
+      taskName: dailyLoginTask.name,
+    };
+
+    // Add level up notification if applicable
+    if (newLevel) {
+      notifications.push({
+        type: "LEVEL_UP",
+        data: {
+          userId,
+          newLevel: newLevel.level,
+          levelName: newLevel.levelName,
+          xpRequired: newLevel.xpRequired,
+          totalXp,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    // 5. Update streak if daily login is streak-eligible
+    let streakInfo = null;
+    if (dailyLoginTask.isStreakEligible) {
+      const streakResult = await updateUserStreakQuery(userId);
+      response.streak = streakResult;
+
+      // Add streak notification if updated
+      if (streakResult.wasUpdated) {
+        notifications.push({
+          type: "STREAK_UPDATED",
+          data: {
+            userId,
+            currentStreak: streakResult.currentStreak,
+            wasUpdated: streakResult.wasUpdated,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      streakInfo = {
+        currentStreak: streakResult.currentStreak,
+      };
+    }
+
+    // 6. Check and award badges for daily_login task type
+    const taskTypes = [dailyLoginTask.taskType];
+
+    // Add streak task type if streak was updated
+    if (dailyLoginTask.isStreakEligible && response.streak?.wasUpdated) {
+      taskTypes.push("streak");
+    }
+
+    const allAwardedBadges = await Promise.map(
+      taskTypes,
+      async (taskType) => {
+        return await checkAndAwardBadgesQuery(userId, streakInfo, totalXp, taskType);
+      },
+      { concurrency: 1 }
+    );
+
+    // Combine and flatten all awarded badges
+    const awardedBadges = [].concat(...allAwardedBadges).filter(Boolean);
+    if (awardedBadges.length > 0) {
+      response.newBadges = awardedBadges;
+
+      // Add badge notifications
+      awardedBadges.forEach((badge) => {
+        notifications.push({
+          type: "BADGE_EARNED",
+          data: {
+            userId,
+            badge: {
+              id: badge.id,
+              name: badge.name,
+              description: badge.description,
+              type: badge.type,
+              xpReward: badge.xpReward,
+              taskType: badge.taskType,
+              requirementType: badge.requirementType,
+              unlockedAt: badge.unlockedAt,
+            },
+            timestamp: new Date().toISOString(),
+          },
+        });
+      });
+    }
+
+    // Attach notifications to response
+    response.notifications = notifications;
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[dailyLogin/error]");
+    return sendApiError(res, { notifyUser: "Failed to process daily login" }, 500);
   }
 };

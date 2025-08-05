@@ -813,13 +813,64 @@ export const markAnimationSeenQuery = async (userId) => {
     const updateQuery = `
       UPDATE user_streaks 
       SET animation_seen = 1
-      WHERE user_id = ? AND created_at = CURRENT_DATE
+      WHERE user_id = ?
     `;
 
     await query(updateQuery, [userId]);
     return true;
   } catch (error) {
     logger.error(error, "[markAnimationSeenQuery/error]");
+    throw error;
+  }
+};
+
+export const checkDailyLoginQuery = async (userId) => {
+  try {
+    // Check if user has already logged in today by checking for daily_login XP transactions
+    const dailyLoginCheckQuery = `
+      SELECT 
+        xt.id as transactionId,
+        xt.xp_points as xpPoints,
+        xt.created_at as loginTime,
+        tt.name as taskName
+      FROM xp_transactions xt
+      INNER JOIN task_templates tt ON xt.task_template_id = tt.id
+      WHERE xt.user_id = ?
+      AND xt.source_type = 'TASK'
+      AND tt.task_type = 'daily_login'
+      AND DATE(xt.created_at) = CURRENT_DATE
+      LIMIT 1
+    `;
+
+    const existingLogin = await query(dailyLoginCheckQuery, [userId]);
+    return existingLogin.length > 0 ? existingLogin[0] : null;
+  } catch (error) {
+    logger.error(error, "[checkDailyLoginQuery/error]");
+    throw error;
+  }
+};
+
+export const getDailyLoginTaskTemplateQuery = async () => {
+  try {
+    // Get the daily login task template
+    const taskTemplateQuery = `
+      SELECT 
+        id, 
+        name, 
+        xp_points as xpPoints, 
+        is_streak_eligible as isStreakEligible,
+        is_active as isActive,
+        task_type as taskType
+      FROM task_templates 
+      WHERE task_type = 'daily_login' 
+      AND is_active = 1
+      LIMIT 1
+    `;
+
+    const result = await query(taskTemplateQuery);
+    return result.length > 0 ? result[0] : null;
+  } catch (error) {
+    logger.error(error, "[getDailyLoginTaskTemplateQuery/error]");
     throw error;
   }
 };
