@@ -2,10 +2,16 @@ import logger from "../../../config/logger.js";
 import { sendApiError, sendApiResponse } from "../helpers/api.helper.js";
 import {
   getTaskTemplateDetailsQuery,
+  checkDuplicateXPTransactionQuery,
   createXPTransactionQuery,
   updateUserLevelInfoQuery,
   updateUserStreakQuery,
   checkAndAwardBadgesQuery,
+  getWeeklyStreakSummaryQuery,
+  getMonthlyStreakSummaryQuery,
+  getDayStreakBreakupQuery,
+  getStreakStatusQuery,
+  markAnimationSeenQuery,
 } from "../services/user-reward.query.js";
 import Bluebird from "bluebird";
 const Promise = Bluebird;
@@ -43,6 +49,43 @@ export const awardXPForTask = async (req, res) => {
       return sendApiError(res, { notifyUser: "Invalid task template or task is inactive" }, 404);
     }
 
+    // 3. Check for duplicate XP transaction
+    const duplicateCheckData = {
+      roadmapCourseId,
+      moduleWeek,
+      courseSectionId,
+      courseChapterId,
+      quizId,
+      projectId,
+    };
+
+    const existingTransaction = await checkDuplicateXPTransactionQuery(
+      userId,
+      taskTemplateId,
+      duplicateCheckData
+    );
+
+    if (existingTransaction) {
+      logger.info(
+        `Duplicate XP transaction detected for user ${userId}, task template ${taskTemplateId}. ` +
+          `Existing transaction ID: ${existingTransaction.id}, XP: ${existingTransaction.xpPoints}, ` +
+          `Created: ${existingTransaction.createdAt}`
+      );
+
+      return sendApiError(
+        res,
+        {
+          notifyUser: "XP has already been awarded for this task",
+          details: {
+            existingTransactionId: existingTransaction.id,
+            xpPoints: existingTransaction.xpPoints,
+            awardedAt: existingTransaction.createdAt,
+          },
+        },
+        409 // Conflict status code
+      );
+    }
+
     // Initialize task types array to track all types that need badge checking
     const taskTypes = [];
 
@@ -57,10 +100,10 @@ export const awardXPForTask = async (req, res) => {
     // Always include the original task type
     taskTypes.push(taskTemplate.taskType);
 
-    // 3. Determine XP points to award
+    // 4. Determine XP points to award
     const xpToAward = overrideXP || taskTemplate.xpPoints;
 
-    // 4. Record XP transaction and update user's total XP/level
+    // 5. Record XP transaction and update user's total XP/level
     const additionalTrackingData = {
       roadmapCourseId,
       moduleWeek,
@@ -127,7 +170,7 @@ export const awardXPForTask = async (req, res) => {
       });
     }
 
-    // 5. Update streak if task is streak-eligible
+    // 6. Update streak if task is streak-eligible
     let streakInfo = null;
     if (taskTemplate.isStreakEligible) {
       const streakResult = await updateUserStreakQuery(userId);
@@ -155,7 +198,7 @@ export const awardXPForTask = async (req, res) => {
       };
     }
 
-    // 6. Check and award badges for all applicable task types using Promise.map
+    // 7. Check and award badges for all applicable task types using Promise.map
     const allAwardedBadges = await Promise.map(
       taskTypes,
       async (taskType) => {
@@ -198,5 +241,281 @@ export const awardXPForTask = async (req, res) => {
   } catch (err) {
     logger.error(err, "[awardXPForTask/error]");
     return sendApiError(res, { notifyUser: "Failed to award XP points" }, 500);
+  }
+};
+
+export const getWeeklyStreakSummary = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    // Get user's streak data from database
+    const streakData = await getWeeklyStreakSummaryQuery(userId);
+
+    // Helper function to format date to DD-MM-YYYY
+    const formatDate = (date) => {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    };
+
+    // Helper function to get day name
+    const getDayName = (date) => {
+      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      return days[date.getDay()];
+    };
+
+    // Get current week's dates (Monday to Sunday)
+    const getCurrentWeekDates = () => {
+      const today = new Date();
+      const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+      // Calculate days since Monday (if today is Sunday, it should be 6 days since Monday)
+      const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
+
+      // Get Monday of current week
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - daysSinceMonday);
+      monday.setHours(0, 0, 0, 0);
+
+      const weekDates = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + i);
+        weekDates.push(date);
+      }
+
+      return weekDates;
+    };
+
+    // Get current week dates
+    const weekDates = getCurrentWeekDates();
+
+    // Convert activity dates from database to comparable format
+    const activityDates = streakData.weeklyActivities.map((date) => {
+      if (typeof date === "string") {
+        return new Date(date).toDateString();
+      }
+      return date.toDateString();
+    });
+
+    // Build week streak status
+    const weekStreakStatus = weekDates.map((date) => {
+      const isActive = activityDates.includes(date.toDateString());
+
+      return {
+        streakDate: formatDate(date),
+        day: getDayName(date),
+        status: isActive ? "done" : "not-done",
+      };
+    });
+
+    const response = {
+      currentStreak: streakData.currentStreak,
+      totalXP: streakData.totalXp,
+      weekStreakStatus,
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[getWeeklyStreakSummary/error]");
+    return sendApiError(res, { notifyUser: "Failed to retrieve weekly streak summary" }, 500);
+  }
+};
+
+export const getMonthlySummary = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { month, year } = req.query;
+
+    // Validate month and year parameters
+    if (!month || !year) {
+      return sendApiError(res, { notifyUser: "Month and year parameters are required" }, 400);
+    }
+
+    const monthNum = parseInt(month);
+    const yearNum = parseInt(year);
+
+    // Validate month range (1-12)
+    if (monthNum < 1 || monthNum > 12) {
+      return sendApiError(res, { notifyUser: "Month must be between 1 and 12" }, 400);
+    }
+
+    // Validate year range (reasonable range)
+    if (yearNum < 2025 || yearNum > 2030) {
+      return sendApiError(res, { notifyUser: "Year must be between 2020 and 2030" }, 400);
+    }
+
+    // Get user's monthly activity data
+    const monthlyData = await getMonthlyStreakSummaryQuery(userId, monthNum, yearNum);
+
+    // Helper function to format date to DD-MM-YYYY
+    const formatDate = (date) => {
+      const day = String(date.getDate()).padStart(2, "0");
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    };
+
+    // Get all dates in the requested month
+    const getDatesInMonth = (month, year) => {
+      const dates = [];
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month - 1, day);
+        dates.push(date);
+      }
+
+      return dates;
+    };
+
+    // Get current date for comparison
+    const today = new Date();
+    const todayDateString = today.toDateString();
+
+    // Get all dates in the month
+    const monthDates = getDatesInMonth(monthNum, yearNum);
+
+    // Convert activity dates from database to comparable format
+    const activityDates = monthlyData.monthlyActivities.map((date) => {
+      if (typeof date === "string") {
+        return new Date(date).toDateString();
+      }
+      return date.toDateString();
+    });
+
+    // Build monthly summary
+    const monthlySummary = monthDates.map((date) => {
+      const isActive = activityDates.includes(date.toDateString());
+      const isToday = date.toDateString() === todayDateString;
+
+      return {
+        date: formatDate(date),
+        status: isActive ? "done" : "not-done",
+        isToday: isToday,
+      };
+    });
+
+    return sendApiResponse(res, monthlySummary);
+  } catch (error) {
+    logger.error(error, "[getMonthlySummary/error]");
+    return sendApiError(res, { notifyUser: "Failed to retrieve monthly summary" }, 500);
+  }
+};
+
+export const getDayStreakBreakup = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { date } = req.query;
+
+    // Validate userId
+    if (!userId) {
+      return sendApiError(res, { notifyUser: "User authentication required" }, 401);
+    }
+
+    // Validate date parameter
+    if (!date) {
+      return sendApiError(res, { notifyUser: "Date parameter is required" }, 400);
+    }
+
+    // Validate date format (DD-MM-YYYY)
+    const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
+    if (!dateRegex.test(date)) {
+      return sendApiError(res, { notifyUser: "Date must be in DD-MM-YYYY format" }, 400);
+    }
+
+    // Convert DD-MM-YYYY to YYYY-MM-DD for database query
+    const [day, month, year] = date.split("-");
+    const dbDate = `${year}-${month}-${day}`;
+
+    // Validate that date is a valid date
+    const parsedDate = new Date(dbDate);
+    if (isNaN(parsedDate.getTime())) {
+      return sendApiError(res, { notifyUser: "Invalid date provided" }, 400);
+    }
+
+    // Get detailed breakdown for the specific date
+    const dayBreakup = await getDayStreakBreakupQuery(userId, dbDate);
+
+    // Format the response
+    const response = {
+      date: dayBreakup.date,
+      totalXpEarned: dayBreakup.totalXpEarned,
+      totalTasks: dayBreakup.totalTasks,
+      hasActivity: dayBreakup.totalTasks > 0,
+      tasks: dayBreakup.tasks.map((task) => ({
+        transactionId: task.transactionId,
+        xpPoints: task.xpPoints,
+        completedAt: task.completedAt,
+        taskName: task.taskName,
+        taskType: task.taskType,
+        details: {
+          courseName: task.courseName,
+          chapterName: task.chapterName,
+          quizName: task.quizName,
+          projectName: task.projectName,
+        },
+      })),
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[getDayStreakBreakup/error]");
+    return sendApiError(res, { notifyUser: "Failed to retrieve day streak breakdown" }, 500);
+  }
+};
+
+export const getStreakStatus = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    logger.info(`Getting streak status for user: ${userId}`);
+
+    const streakStatus = await getStreakStatusQuery(userId);
+
+    const response = {
+      success: true,
+      data: {
+        currentStreak: streakStatus.currentStreak,
+        animationSeen: streakStatus.animationSeen,
+        completedStreak: streakStatus.completedStreak,
+        weeklyActivities: streakStatus.weeklyActivities,
+        todayTasks: streakStatus.todayTasks.map((task) => ({
+          transactionId: task.transactionId,
+          xpPoints: task.xpPoints,
+          completedAt: task.completedAt,
+          taskName: task.taskName,
+          taskType: task.taskType,
+          courseName: task.courseName,
+          roadmapName: task.roadmapName,
+          chapterName: task.chapterName,
+          quizName: task.quizName,
+          projectName: task.projectName,
+        })),
+      },
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[getStreakStatus/error]");
+    return sendApiError(res, { notifyUser: "Failed to retrieve streak status" }, 500);
+  }
+};
+
+export const markAnimationSeen = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    await markAnimationSeenQuery(userId);
+    const response = {
+      success: true,
+      message: "Animation marked as seen successfully",
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[markAnimationSeen/error]");
+    return sendApiError(res, { notifyUser: "Failed to mark animation as seen" }, 500);
   }
 };

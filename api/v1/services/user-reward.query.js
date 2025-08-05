@@ -25,6 +25,87 @@ export const getTaskTemplateDetailsQuery = async (taskTemplateId) => {
   }
 };
 
+export const checkDuplicateXPTransactionQuery = async (
+  userId,
+  taskTemplateId,
+  additionalData = {}
+) => {
+  try {
+    // Extract additional tracking data for duplicate checking
+    const {
+      roadmapCourseId = null,
+      moduleWeek = null,
+      courseSectionId = null,
+      courseChapterId = null,
+      quizId = null,
+      projectId = null,
+    } = additionalData;
+
+    // Build dynamic WHERE conditions based on what data is provided
+    let whereConditions = ["user_id = ?", "task_template_id = ?", 'source_type = "TASK"'];
+    let queryParams = [userId, taskTemplateId];
+
+    // Add conditions for each tracking field that has a value
+    if (roadmapCourseId !== null) {
+      whereConditions.push("roadmap_course_id = ?");
+      queryParams.push(roadmapCourseId);
+    } else {
+      whereConditions.push("roadmap_course_id IS NULL");
+    }
+
+    if (moduleWeek !== null) {
+      whereConditions.push("module_week = ?");
+      queryParams.push(moduleWeek);
+    } else {
+      whereConditions.push("module_week IS NULL");
+    }
+
+    if (courseSectionId !== null) {
+      whereConditions.push("course_section_id = ?");
+      queryParams.push(courseSectionId);
+    } else {
+      whereConditions.push("course_section_id IS NULL");
+    }
+
+    if (courseChapterId !== null) {
+      whereConditions.push("course_chapter_id = ?");
+      queryParams.push(courseChapterId);
+    } else {
+      whereConditions.push("course_chapter_id IS NULL");
+    }
+
+    if (quizId !== null) {
+      whereConditions.push("quiz_id = ?");
+      queryParams.push(quizId);
+    } else {
+      whereConditions.push("quiz_id IS NULL");
+    }
+
+    if (projectId !== null) {
+      whereConditions.push("project_id = ?");
+      queryParams.push(projectId);
+    } else {
+      whereConditions.push("project_id IS NULL");
+    }
+
+    const queryString = `
+      SELECT 
+        id,
+        xp_points as xpPoints,
+        created_at as createdAt
+      FROM xp_transactions 
+      WHERE ${whereConditions.join(" AND ")}
+      LIMIT 1
+    `;
+
+    const result = await query(queryString, queryParams);
+    return result.length > 0 ? result[0] : null;
+  } catch (error) {
+    logger.error(error, "[checkDuplicateXPTransactionQuery/error]");
+    throw error;
+  }
+};
+
 export const createXPTransactionQuery = async (
   userId,
   taskTemplateId,
@@ -435,6 +516,310 @@ export const getOrgLeaderboardWithCurrentUser = async (userId, orgId) => {
     return await query(queryString, [orgId, userId, userId]);
   } catch (error) {
     logger.error(error, "[getOrgLeaderboardWithCurrentUser/error]");
+    throw error;
+  }
+};
+
+export const getWeeklyStreakSummaryQuery = async (userId) => {
+  try {
+    // Get user's current streak info and total XP
+    const userInfoQuery = `
+      SELECT 
+        COALESCE(us.current_streak, 0) as currentStreak,
+        COALESCE(uli.total_xp, 0) as totalXp
+      FROM user_level_info uli
+      LEFT JOIN user_streaks us ON us.user_id = uli.user_id
+      WHERE uli.user_id = ?
+      
+      UNION ALL
+      
+      SELECT 
+        COALESCE(us.current_streak, 0) as currentStreak,
+        0 as totalXp
+      FROM user_streaks us
+      WHERE us.user_id = ? 
+      AND NOT EXISTS (SELECT 1 FROM user_level_info WHERE user_id = ?)
+    `;
+
+    const userInfoResults = await query(userInfoQuery, [userId, userId, userId]);
+    const userInfo = userInfoResults[0] || { currentStreak: 0, totalXp: 0 };
+
+    // Get all streak activities from xp_transactions for current week
+    // We'll look at xp_transactions created_at dates to determine activity
+    const weeklyActivitiesQuery = `
+      SELECT DISTINCT 
+        DATE(created_at) as activityDate
+      FROM xp_transactions
+      WHERE user_id = ? 
+      AND source_type = 'TASK'
+      AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+      AND DATE(created_at) < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 7 DAY)
+      ORDER BY activityDate
+    `;
+
+    const weeklyActivities = await query(weeklyActivitiesQuery, [userId]);
+
+    return {
+      currentStreak: userInfo.currentStreak || 0,
+      totalXp: userInfo.totalXp || 0,
+      weeklyActivities: weeklyActivities.map((activity) => activity.activityDate),
+    };
+  } catch (error) {
+    logger.error(error, "[getWeeklyStreakSummaryQuery/error]");
+    throw error;
+  }
+};
+
+export const getMonthlyStreakSummaryQuery = async (userId, month, year) => {
+  try {
+    // Get all activity dates for the specified month from xp_transactions
+    const monthlyActivitiesQuery = `
+      SELECT DISTINCT 
+        DATE(created_at) as activityDate
+      FROM xp_transactions
+      WHERE user_id = ? 
+      AND source_type = 'TASK'
+      AND YEAR(created_at) = ?
+      AND MONTH(created_at) = ?
+      ORDER BY activityDate
+    `;
+
+    const monthlyActivities = await query(monthlyActivitiesQuery, [userId, year, month]);
+
+    return {
+      monthlyActivities: monthlyActivities.map((activity) => activity.activityDate),
+    };
+  } catch (error) {
+    logger.error(error, "[getMonthlyStreakSummaryQuery/error]");
+    throw error;
+  }
+};
+
+export const getDayStreakBreakupQuery = async (userId, date) => {
+  try {
+    // Get all task transactions for the specific date with detailed information
+    const dayTasksQuery = `
+      SELECT 
+        xt.id as transactionId,
+        xt.xp_points as xpPoints,
+        xt.created_at as completedAt,
+        xt.roadmap_course_id as roadmapCourseId,
+        xt.module_week as moduleWeek,
+        xt.course_section_id as courseSectionId,
+        xt.course_chapter_id as courseChapterId,
+        xt.quiz_id as quizId,
+        xt.project_id as projectId,
+        tt.name as taskName,
+        tt.task_type as taskType,
+        tt.is_streak_eligible as isStreakEligible
+      FROM xp_transactions xt
+      INNER JOIN task_templates tt ON xt.task_template_id = tt.id
+      WHERE xt.user_id = ?
+      AND xt.source_type = 'TASK'
+      AND DATE(xt.created_at) = ?
+      AND tt.is_streak_eligible = 1
+      ORDER BY xt.created_at ASC
+    `;
+
+    const dayTasks = await query(dayTasksQuery, [userId, date]);
+
+    // For each task, get additional details based on task type
+    const enrichedTasks = await Promise.map(
+      dayTasks,
+      async (task) => {
+        const taskDetails = {
+          transactionId: task.transactionId,
+          xpPoints: task.xpPoints,
+          completedAt: task.completedAt,
+          taskName: task.taskName,
+          taskType: task.taskType,
+          courseName: null,
+          chapterName: null,
+          quizName: null,
+          projectName: null,
+        };
+
+        try {
+          // Get chapter information if courseChapterId exists
+          if (task.courseChapterId) {
+            const chapterQuery = `
+              SELECT ch.title              AS chapterName,
+                     c.title               AS courseName,
+                     r.roadmap_name        AS roadmapName
+               FROM user_chapter_progress ucp
+                       JOIN chapters ch ON ucp.chapter_id = ch.id
+                       JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
+                       JOIN roadmaps r ON rcm.roadmap_id = r.id
+                       JOIN courses c ON ucp.course_id = c.id
+               WHERE ucp.id = ?;
+            `;
+            const [chapterInfo] = await query(chapterQuery, [task.courseChapterId]);
+            if (chapterInfo) {
+              taskDetails.courseName = chapterInfo.courseName;
+              taskDetails.roadmapName = chapterInfo.roadmapName;
+              taskDetails.chapterName = chapterInfo.chapterName;
+            }
+          }
+          // still left for quiz and project id
+        } catch (enrichmentError) {
+          logger.error(
+            enrichmentError,
+            `[getDayStreakBreakupQuery/enrichment-error-${task.transactionId}]`
+          );
+          // Continue with basic task info even if enrichment fails
+        }
+
+        return taskDetails;
+      },
+      { concurrency: 3 } // Process multiple tasks in parallel but with limited concurrency
+    );
+
+    return {
+      date,
+      totalXpEarned: dayTasks.reduce((sum, task) => sum + task.xpPoints, 0),
+      totalTasks: dayTasks.length,
+      tasks: enrichedTasks,
+    };
+  } catch (error) {
+    logger.error(error, "[getDayStreakBreakupQuery/error]");
+    throw error;
+  }
+};
+
+export const getStreakStatusQuery = async (userId) => {
+  try {
+    // Get user's current streak info and animation status
+    const userStreakQuery = `
+      SELECT 
+        current_streak as currentStreak,
+        animation_seen as animationSeen,
+        last_activity_date as lastActivityDate
+      FROM user_streaks
+      WHERE user_id = ?
+    `;
+
+    const [userStreak] = await query(userStreakQuery, [userId]);
+
+    // If no streak record exists, create one
+    if (!userStreak) {
+      return {
+        currentStreak: 0,
+        animationSeen: false,
+        weeklyActivities: [],
+        todayTasks: [],
+      };
+    }
+
+    // Get weekly activities for the current week
+    const weeklyActivitiesQuery = `
+      SELECT DISTINCT 
+        DATE(created_at) as activityDate
+      FROM xp_transactions
+      WHERE user_id = ? 
+      AND source_type = 'TASK'
+      AND DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY)
+      AND DATE(created_at) < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY), INTERVAL 7 DAY)
+      ORDER BY activityDate
+    `;
+
+    const weeklyActivities = await query(weeklyActivitiesQuery, [userId]);
+
+    // Get today's completed tasks
+    const todayTasksQuery = `
+      SELECT 
+        xt.id as transactionId,
+        xt.xp_points as xpPoints,
+        xt.created_at as completedAt,
+        xt.course_chapter_id as courseChapterId,
+        xt.quiz_id as quizId,
+        xt.project_id as projectId,
+        tt.name as taskName,
+        tt.task_type as taskType
+      FROM xp_transactions xt
+      INNER JOIN task_templates tt ON xt.task_template_id = tt.id
+      WHERE xt.user_id = ?
+      AND xt.source_type = 'TASK'
+      AND DATE(xt.created_at) = CURRENT_DATE
+      AND tt.is_streak_eligible = 1
+      ORDER BY xt.created_at ASC
+    `;
+
+    const todayTasks = await query(todayTasksQuery, [userId]);
+
+    // Enrich today's tasks with details
+    const enrichedTodayTasks = await Promise.map(
+      todayTasks,
+      async (task) => {
+        const taskDetails = {
+          transactionId: task.transactionId,
+          xpPoints: task.xpPoints,
+          completedAt: task.completedAt,
+          taskName: task.taskName,
+          taskType: task.taskType,
+          courseName: null,
+          chapterName: null,
+          quizName: null,
+          projectName: null,
+        };
+
+        try {
+          // Get chapter information if courseChapterId exists
+          if (task.courseChapterId) {
+            const chapterQuery = `
+              SELECT ch.title AS chapterName,
+                     c.title AS courseName,
+                     r.roadmap_name AS roadmapName
+               FROM user_chapter_progress ucp
+                       JOIN chapters ch ON ucp.chapter_id = ch.id
+                       JOIN roadmap_courses_mapping rcm ON ucp.roadmap_course_id = rcm.id
+                       JOIN roadmaps r ON rcm.roadmap_id = r.id
+                       JOIN courses c ON ucp.course_id = c.id
+               WHERE ucp.id = ?
+            `;
+            const [chapterInfo] = await query(chapterQuery, [task.courseChapterId]);
+            if (chapterInfo) {
+              taskDetails.courseName = chapterInfo.courseName;
+              taskDetails.roadmapName = chapterInfo.roadmapName;
+              taskDetails.chapterName = chapterInfo.chapterName;
+            }
+          }
+        } catch (enrichmentError) {
+          logger.error(
+            enrichmentError,
+            `[getStreakStatusQuery/enrichment-error-${task.transactionId}]`
+          );
+        }
+
+        return taskDetails;
+      },
+      { concurrency: 3 }
+    );
+
+    return {
+      currentStreak: userStreak.currentStreak || 0,
+      animationSeen: userStreak.animationSeen === 1,
+      weeklyActivities: weeklyActivities.map((activity) => activity.activityDate),
+      todayTasks: enrichedTodayTasks,
+      completedStreak: enrichedTodayTasks.length > 0,
+    };
+  } catch (error) {
+    logger.error(error, "[getStreakStatusQuery/error]");
+    throw error;
+  }
+};
+
+export const markAnimationSeenQuery = async (userId) => {
+  try {
+    const updateQuery = `
+      UPDATE user_streaks 
+      SET animation_seen = 1
+      WHERE user_id = ? AND created_at = CURRENT_DATE
+    `;
+
+    await query(updateQuery, [userId]);
+    return true;
+  } catch (error) {
+    logger.error(error, "[markAnimationSeenQuery/error]");
     throw error;
   }
 };
