@@ -8,6 +8,7 @@ import {
   getStreakStatus,
   markAnimationSeen,
   dailyLogin,
+  getUserAchievements,
 } from "../controllers/user-reward.controller.js";
 
 const router = Router();
@@ -19,5 +20,6 @@ router.get("/day-streak-breakup", authenticateUserTokenMiddleware, getDayStreakB
 router.get("/streak-status", authenticateUserTokenMiddleware, getStreakStatus);
 router.post("/mark-animation-seen", authenticateUserTokenMiddleware, markAnimationSeen);
 router.post("/daily-login", authenticateUserTokenMiddleware, dailyLogin);
+router.get("/achievements", authenticateUserTokenMiddleware, getUserAchievements);
 
 export default router;

@@ -874,3 +874,111 @@ export const getDailyLoginTaskTemplateQuery = async () => {
     throw error;
   }
 };
+
+export const getUserAchievementsQuery = async (userId) => {
+  try {
+    // Get user's current level and XP information
+    const userLevelQuery = `
+      SELECT 
+        uli.total_xp as totalXp,
+        uli.current_level_id as currentLevelId,
+        l.id as levelId,
+        l.level_name as levelName,
+        l.tier,
+        l.tier_level as tierLevel,
+        l.min_xp_required as minXpRequired,
+        l.max_xp_required as maxXpRequired
+      FROM user_level_info uli
+      LEFT JOIN levels l ON uli.current_level_id = l.id
+      WHERE uli.user_id = ?
+    `;
+    
+    const [userLevel] = await query(userLevelQuery, [userId]);
+
+    // Get next level information for progress calculation
+    let nextLevel = null;
+    if (userLevel && userLevel.totalXp !== null) {
+      const nextLevelQuery = `
+        SELECT 
+          id,
+          level_name as levelName,
+          tier,
+          tier_level as tierLevel,
+          min_xp_required as minXpRequired,
+          max_xp_required as maxXpRequired
+        FROM levels 
+        WHERE min_xp_required > ? 
+        AND is_active = 1
+        ORDER BY min_xp_required ASC 
+        LIMIT 1
+      `;
+      
+      const nextLevelResult = await query(nextLevelQuery, [userLevel.totalXp || 0]);
+      
+      if (nextLevelResult.length > 0) {
+        nextLevel = nextLevelResult[0];
+      }
+    }
+
+    // Get user's earned badges with their levels and details
+    const userBadgesQuery = `
+      SELECT 
+        ub.id as userBadgeId,
+        ub.badge_id as badgeId,
+        ub.unlocked_at as unlockedAt,
+        ab.name as badgeName,
+        ab.description as badgeDescription,
+        ab.badge_type as badgeType,
+        ab.requirements,
+        ab.xp_reward as xpReward,
+        ab.is_global as isGlobal,
+        ab.is_active as isActive
+      FROM user_badges ub
+      INNER JOIN available_badges ab ON ub.badge_id = ab.id
+      WHERE ub.user_id = ?
+      ORDER BY ub.unlocked_at DESC, ab.name ASC
+    `;
+    
+    const userBadges = await query(userBadgesQuery, [userId]);
+
+    // Calculate progress to next level
+    let progressToNextLevel = null;
+    if (userLevel && nextLevel) {
+      const currentXP = userLevel.totalXp || 0;
+      const currentLevelMinXP = userLevel.minXpRequired || 0;
+      const currentLevelMaxXP = userLevel.maxXpRequired || 0;
+      const nextLevelMinXP = nextLevel.minXpRequired;
+      const xpNeededForNext = nextLevelMinXP - currentXP;
+      
+      // Calculate progress within current level range
+      const progressXP = currentXP - currentLevelMinXP;
+      const levelRange = currentLevelMaxXP - currentLevelMinXP;
+      const progressPercentage = levelRange > 0 ? Math.min(Math.max((progressXP / levelRange) * 100, 0), 100) : 0;
+
+      progressToNextLevel = {
+        currentXP,
+        nextLevelXP: nextLevelMinXP,
+        xpNeededForNext,
+        progressPercentage: Math.round(progressPercentage * 100) / 100,
+        nextLevel: {
+          id: nextLevel.id,
+          levelName: nextLevel.levelName,
+          tier: nextLevel.tier,
+          tierLevel: nextLevel.tierLevel,
+          minXpRequired: nextLevel.minXpRequired,
+          maxXpRequired: nextLevel.maxXpRequired
+        }
+      };
+    }
+
+    return {
+      userLevel: userLevel || null,
+      progressToNextLevel,
+      userBadges: userBadges || [],
+    };
+    
+  } catch (error) {
+    logger.error(error, "[getUserAchievementsQuery/error]");
+    throw error;
+  }
+};

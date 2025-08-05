@@ -14,6 +14,7 @@ import {
   markAnimationSeenQuery,
   checkDailyLoginQuery,
   getDailyLoginTaskTemplateQuery,
+  getUserAchievementsQuery,
 } from "../services/user-reward.query.js";
 import Bluebird from "bluebird";
 const Promise = Bluebird;
@@ -706,5 +707,81 @@ export const dailyLogin = async (req, res) => {
   } catch (error) {
     logger.error(error, "[dailyLogin/error]");
     return sendApiError(res, { notifyUser: "Failed to process daily login" }, 500);
+  }
+};
+
+export const getUserAchievements = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    logger.info(`Getting achievements for user: ${userId}`);
+
+    const achievements = await getUserAchievementsQuery(userId);
+
+    // Format the response to match the screenshot structure
+    const response = {
+      success: true,
+      data: {
+        // Current level information
+        currentLevel: achievements.userLevel
+          ? {
+              levelId: achievements.userLevel.levelId,
+              levelName: achievements.userLevel.levelName,
+              tier: achievements.userLevel.tier,
+              tierLevel: achievements.userLevel.tierLevel,
+              totalXp: achievements.userLevel.totalXp || 0,
+              minXpRequired: achievements.userLevel.minXpRequired || 0,
+              maxXpRequired: achievements.userLevel.maxXpRequired || 0,
+            }
+          : {
+              levelId: null,
+              levelName: "Beginner",
+              tier: "BRONZE",
+              tierLevel: "I",
+              totalXp: 0,
+              minXpRequired: 0,
+              maxXpRequired: 100,
+            },
+
+        // Progress to next level
+        progressToNextLevel: achievements.progressToNextLevel
+          ? {
+              currentXP: achievements.progressToNextLevel.currentXP,
+              nextLevelXP: achievements.progressToNextLevel.nextLevelXP,
+              xpNeededForNext: achievements.progressToNextLevel.xpNeededForNext,
+              progressPercentage: achievements.progressToNextLevel.progressPercentage,
+              nextLevel: achievements.progressToNextLevel.nextLevel,
+            }
+          : null,
+
+        // User's earned badges/titles
+        badges: achievements.userBadges.map((badge) => ({
+          userBadgeId: badge.userBadgeId,
+          badgeId: badge.badgeId,
+          name: badge.badgeName,
+          description: badge.badgeDescription,
+          badgeType: badge.badgeType,
+          requirements: badge.requirements,
+          xpReward: badge.xpReward,
+          isGlobal: badge.isGlobal,
+          isActive: badge.isActive,
+          unlockedAt: badge.unlockedAt,
+        })),
+
+        // Summary statistics
+        summary: {
+          totalXP: achievements.userLevel?.totalXp || 0,
+          currentLevel: achievements.userLevel?.levelName || "Beginner",
+          currentTier: achievements.userLevel?.tier || "BRONZE",
+          currentTierLevel: achievements.userLevel?.tierLevel || "I",
+          totalBadges: achievements.userBadges.length,
+        },
+      },
+    };
+
+    return sendApiResponse(res, response);
+  } catch (error) {
+    logger.error(error, "[getUserAchievements/error]");
+    return sendApiError(res, { notifyUser: "Failed to retrieve user achievements" }, 500);
   }
 };
