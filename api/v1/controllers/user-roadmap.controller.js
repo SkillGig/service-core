@@ -2,16 +2,15 @@ import { sendApiError, sendApiResponse } from "../helpers/api.helper.js";
 import { transformRoadmapData } from "../helpers/common.helper.js";
 import {
   getRoadmapDetailsQuery,
-  getUserEnrolledRoadmapsQuery,
   getUserRoadmapQuery,
-  getUserEnrolledRoadmapsWithCurrentCourseQuery,
   getRoadmapCoursesWithStatusQuery,
   getAbstractUserEnrolledRoadmapAndCurrentCourseQuery,
   getUserCompletedCertificatesQuery,
+  getUserOrgId,
 } from "../services/user-common.query.js";
 import logger from "../../../config/logger.js";
 import Bluebird from "bluebird";
-import { getOrgLeaderboardWithCurrentUser, getUserOrgId } from "../services/user-streak.query.js";
+import { getOrgLeaderboardWithCurrentUser } from "../services/user-reward.query.js";
 const Promise = Bluebird;
 
 export const getRoadmapDetails = async (req, res) => {

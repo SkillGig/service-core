@@ -11,22 +11,22 @@ import {
   unlockChapterUnderCourseController,
 } from "../controllers/user-common.controller.js";
 import UserCodeProblemsRoute from "./code-problems.route.js";
-import UserStreaksRoutes from "./user-streak.routes.js";
 import UserRoadmapMilestonesRoutes from "./user-roadmap.routes.js";
 import UserCourseRoutes from "./user-course.routes.js";
-import UserOnboardingRoutes from "./user-onboarding.routes.js"; 
+import UserOnboardingRoutes from "./user-onboarding.routes.js";
+import UserRewardRoutes from "./user-reward.routes.js";
 
 const router = Router();
 
-router.use("/streaks", UserStreaksRoutes);
-
 router.use("/course", UserCourseRoutes);
 
-router.use("/code-problems", UserCodeProblemsRoute)
+router.use("/code-problems", UserCodeProblemsRoute);
 
-router.use('/roadmap', UserRoadmapMilestonesRoutes);
+router.use("/roadmap", UserRoadmapMilestonesRoutes);
 
-router.use('/onboarding', UserOnboardingRoutes)
+router.use("/rewards", UserRewardRoutes);
+
+router.use("/onboarding", UserOnboardingRoutes);
 
 router.get("/config", authenticateUserTokenMiddleware, userConfigController);
 
@@ -41,7 +41,7 @@ router.post("/unlock-section", authenticateUserTokenMiddleware, unlockSectionUnd
 router.post("/unlock-chapter", authenticateUserTokenMiddleware, unlockChapterUnderCourseController);
 
 router.get("/notifications/all", authenticateUserTokenMiddleware, getAllUserNotifications);
- 
+
 router.patch(
   "/notifications/mark-as-seen",
   authenticateUserTokenMiddleware,

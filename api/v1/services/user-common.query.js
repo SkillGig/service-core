@@ -1772,3 +1772,13 @@ export const getCourseFaqsQuery = async (courseId) => {
     throw error;
   }
 };
+
+export const getUserOrgId = async (userId) => {
+  try {
+    const orgQuery = `SELECT org_id AS orgId FROM users WHERE id = ? LIMIT 1`;
+    return await query(orgQuery, [userId]);
+  } catch (error) {
+    logger.error(error, "[getUserOrgId/error]");
+    throw error;
+  }
+};
