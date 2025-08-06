@@ -285,7 +285,8 @@ export const getAllSubmissionsQuery = async (problemId, userId) => {
            ps.test_case_fail_count AS failedCount
       FROM programming_submissions ps
       LEFT JOIN dim_programming_languages dpl on ps.language_id = dpl.id
-      WHERE ps.question_id = ? AND ps.user_id = ?`;
+      WHERE ps.question_id = ? AND ps.user_id = ?
+      ORDER BY ps.submission_at DESC;`;
 
     const submissions = await query(queryText, [problemId, userId]);
     return submissions;

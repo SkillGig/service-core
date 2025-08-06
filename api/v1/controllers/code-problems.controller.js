@@ -299,7 +299,8 @@ export const submitProblem = async (req, res) => {
       failedTestCases: failedTestCaseResults ?? [],
     });
 
-    await insertTestCaseResultsQuery(submitResultId, allTestCaseResults);
+    // Commenting below db call as of now, as it is not required for now
+    // await insertTestCaseResultsQuery(submitResultId, allTestCaseResults);
     logger.info(
       `Problem submission of test cases completed for user ID: ${userId} with result ID: ${submitResultId}`
     );
@@ -326,10 +327,7 @@ export const getAllSubmissions = async(req, res)=>{
       return sendApiError(res, 404, "No submissions found for this problem");
     }
     
-    sendApiResponse(res, {
-      success: true,
-      data: submissions,
-    });
+    sendApiResponse(res, submissions);
   } catch (error) {
     logger.error(`Error fetching submissions for problem ID: ${problemId} by user ID: ${userId}`, error);
     sendApiError(res, {
