@@ -9,7 +9,7 @@ import {
 
 const router = Router();
 
-router.get("/available-roamaps", authenticateUserTokenMiddleware, getAvailableRoadmapsForUser);
+router.get("/available-roadmaps", authenticateUserTokenMiddleware, getAvailableRoadmapsForUser);
 
 router.get("/questions", authenticateUserTokenMiddleware, getQuestionsForUserOnboarding);
 
