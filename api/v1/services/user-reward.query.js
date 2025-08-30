@@ -695,7 +695,7 @@ export const getStreakStatusQuery = async (userId) => {
         animation_seen as animationSeen,
         last_activity_date as lastActivityDate
       FROM user_streaks
-      WHERE user_id = ?
+      WHERE user_id = ? AND created_at = CURDATE()
     `;
 
     const [userStreak] = await query(userStreakQuery, [userId]);
@@ -705,6 +705,7 @@ export const getStreakStatusQuery = async (userId) => {
       return {
         currentStreak: 0,
         animationSeen: false,
+        completedStreak: false,
         weeklyActivities: [],
         todayTasks: [],
       };
@@ -892,7 +893,7 @@ export const getUserAchievementsQuery = async (userId) => {
       LEFT JOIN levels l ON uli.current_level_id = l.id
       WHERE uli.user_id = ?
     `;
-    
+
     const [userLevel] = await query(userLevelQuery, [userId]);
 
     // Get next level information for progress calculation
@@ -912,9 +913,9 @@ export const getUserAchievementsQuery = async (userId) => {
         ORDER BY min_xp_required ASC 
         LIMIT 1
       `;
-      
+
       const nextLevelResult = await query(nextLevelQuery, [userLevel.totalXp || 0]);
-      
+
       if (nextLevelResult.length > 0) {
         nextLevel = nextLevelResult[0];
       }
@@ -938,7 +939,7 @@ export const getUserAchievementsQuery = async (userId) => {
       WHERE ub.user_id = ?
       ORDER BY ub.unlocked_at DESC, ab.name ASC
     `;
-    
+
     const userBadges = await query(userBadgesQuery, [userId]);
 
     // Calculate progress to next level
@@ -949,11 +950,12 @@ export const getUserAchievementsQuery = async (userId) => {
       const currentLevelMaxXP = userLevel.maxXpRequired || 0;
       const nextLevelMinXP = nextLevel.minXpRequired;
       const xpNeededForNext = nextLevelMinXP - currentXP;
-      
+
       // Calculate progress within current level range
       const progressXP = currentXP - currentLevelMinXP;
       const levelRange = currentLevelMaxXP - currentLevelMinXP;
-      const progressPercentage = levelRange > 0 ? Math.min(Math.max((progressXP / levelRange) * 100, 0), 100) : 0;
+      const progressPercentage =
+        levelRange > 0 ? Math.min(Math.max((progressXP / levelRange) * 100, 0), 100) : 0;
 
       progressToNextLevel = {
         currentXP,
@@ -966,8 +968,8 @@ export const getUserAchievementsQuery = async (userId) => {
           tier: nextLevel.tier,
           tierLevel: nextLevel.tierLevel,
           minXpRequired: nextLevel.minXpRequired,
-          maxXpRequired: nextLevel.maxXpRequired
-        }
+          maxXpRequired: nextLevel.maxXpRequired,
+        },
       };
     }
 
@@ -976,7 +978,6 @@ export const getUserAchievementsQuery = async (userId) => {
       progressToNextLevel,
       userBadges: userBadges || [],
     };
-    
   } catch (error) {
     logger.error(error, "[getUserAchievementsQuery/error]");
     throw error;

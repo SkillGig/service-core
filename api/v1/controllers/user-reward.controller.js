@@ -264,7 +264,7 @@ export const getWeeklyStreakSummary = async (req, res) => {
 
     // Helper function to get day name
     const getDayName = (date) => {
-      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       return days[date.getDay()];
     };
 
@@ -302,15 +302,27 @@ export const getWeeklyStreakSummary = async (req, res) => {
       return date.toDateString();
     });
 
+    const currentDate = new Date();
+
     // Build week streak status
     const weekStreakStatus = weekDates.map((date) => {
       const isActive = activityDates.includes(date.toDateString());
 
-      return {
-        streakDate: formatDate(date),
-        day: getDayName(date),
-        status: isActive ? "done" : "not-done",
-      };
+      console.log(date, currentDate);
+
+        // Compare only the date part (YYYY-MM-DD) to avoid gaps/overlaps
+        const streakDateStr = date.toISOString().slice(0, 10);
+        const currentDateStr = currentDate.toISOString().slice(0, 10);
+        return {
+          streakDate: formatDate(date),
+          day: getDayName(date),
+          status: isActive
+            ? "done"
+            : streakDateStr >= currentDateStr
+            ? "yet-to-do"
+            : "not-done",
+          isCurrentDay: date.toDateString() === currentDate.toDateString(),
+        };
     });
 
     const response = {
@@ -414,25 +426,26 @@ export const getMonthlySummary = async (req, res) => {
   }
 };
 
+const formatDate = (date) => {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
 export const getDayStreakBreakup = async (req, res) => {
   try {
     const userId = req.user?.userId;
-    const { date } = req.query;
+    let { date } = req.query;
 
     // Validate userId
     if (!userId) {
       return sendApiError(res, { notifyUser: "User authentication required" }, 401);
     }
 
-    // Validate date parameter
     if (!date) {
-      return sendApiError(res, { notifyUser: "Date parameter is required" }, 400);
-    }
-
-    // Validate date format (DD-MM-YYYY)
-    const dateRegex = /^\d{2}-\d{2}-\d{4}$/;
-    if (!dateRegex.test(date)) {
-      return sendApiError(res, { notifyUser: "Date must be in DD-MM-YYYY format" }, 400);
+      const today = new Date();
+      date = formatDate(today);
     }
 
     // Convert DD-MM-YYYY to YYYY-MM-DD for database query
@@ -448,12 +461,79 @@ export const getDayStreakBreakup = async (req, res) => {
     // Get detailed breakdown for the specific date
     const dayBreakup = await getDayStreakBreakupQuery(userId, dbDate);
 
+    // Get user's streak data from database
+    const streakData = await getWeeklyStreakSummaryQuery(userId);
+
+    // Helper function to format date to DD-MM-YYYY
+
+    // Helper function to get day name
+    const getDayName = (date) => {
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      return days[date.getDay()];
+    };
+
+    // Get current week's dates (Monday to Sunday)
+    const getCurrentWeekDates = () => {
+      const today = new Date();
+      const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+      // Calculate days since Monday (if today is Sunday, it should be 6 days since Monday)
+      const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
+
+      // Get Monday of current week
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - daysSinceMonday);
+      monday.setHours(0, 0, 0, 0);
+
+      const weekDates = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + i);
+        weekDates.push(date);
+      }
+
+      return weekDates;
+    };
+
+    // Get current week dates
+    const weekDates = getCurrentWeekDates();
+
+    // Convert activity dates from database to comparable format
+    const activityDates = streakData.weeklyActivities.map((date) => {
+      if (typeof date === "string") {
+        return new Date(date).toDateString();
+      }
+      return date.toDateString();
+    });
+
+    const currentDate = new Date();
+
+    // Build week streak status
+    const weekStreakStatus = weekDates.map((date) => {
+      const isActive = activityDates.includes(date.toDateString());
+
+      console.log(date, currentDate);
+
+      return {
+        streakDate: formatDate(date),
+        day: getDayName(date),
+        status: isActive
+          ? "done"
+          : date.getDate() >= currentDate.getDate()
+          ? "yet-to-do"
+          : "not-done",
+        isCurrentDay: date.toDateString() === currentDate.toDateString(),
+      };
+    });
+
     // Format the response
     const response = {
       date: dayBreakup.date,
-      totalXpEarned: dayBreakup.totalXpEarned,
+      totalXp: dayBreakup.totalXpEarned,
       totalTasks: dayBreakup.totalTasks,
       hasActivity: dayBreakup.totalTasks > 0,
+      weekStreakStatus,
+      currentStreak: streakData.currentStreak,
       tasks: dayBreakup.tasks.map((task) => ({
         transactionId: task.transactionId,
         xpPoints: task.xpPoints,

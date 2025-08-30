@@ -5,7 +5,9 @@ import {
   getAvailableRoamapsQueryController,
   getNextOnboardingQuestion,
   getOptionsMappedForQuestion,
+  getTotalOnboardingQuestions,
   getUserResponsesForRoadmapCalculation,
+  resetUserOnboardingResponses,
   submitUserResponsesQueryController,
 } from "../services/user-onboarding.query.js";
 
@@ -42,22 +44,35 @@ export const getAvailableRoadmapsForUser = async (req, res) => {
 
 export const getQuestionsForUserOnboarding = async (req, res) => {
   const userId = req.user.userId;
-  const previousQuestionId = req.query.previousQuestionId;
+  const previousQuestionId = parseInt(req.query.previousQuestionId) || 0;
 
   try {
-    const nextQuestion = await getNextOnboardingQuestion(userId, previousQuestionId);
+    logger.debug(
+      userId,
+      previousQuestionId === 0,
+      `data being received: [getQuestionsForUserOnboarding]`
+    );
+    if (previousQuestionId === 0) {
+      await resetUserOnboardingResponses(userId);
+    }
 
-    if (!nextQuestion) {
+    const nextQuestionDetails = await getNextOnboardingQuestion(userId, previousQuestionId);
+
+    const userQuestionCompletionProgress = await getTotalOnboardingQuestions(userId);
+
+    if (!nextQuestionDetails) {
       return sendApiError(
         res,
         {
-          notifyUser: "No more questions available for onboarding.",
+          nextQuestionDetails: null,
+          userQuestionCompletionProgress,
         },
-        404
+        200
       );
     }
     return sendApiResponse(res, {
-      data: nextQuestion,
+      nextQuestionDetails,
+      userQuestionCompletionProgress,
     });
   } catch (error) {
     logger.error(`Error fetching questions for user ${userId}:`, error);

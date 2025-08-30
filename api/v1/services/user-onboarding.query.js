@@ -83,9 +83,9 @@ export const submitUserResponsesQueryController = async (userId, questionId, res
   );
 
   const queryString = `
-    INSERT INTO user_onboarding_responses (user_id, question_id, selected_option_ids)
-    VALUES (?, ?, ?)
-    ON DUPLICATE KEY UPDATE selected_option_ids = VALUES(selected_option_ids);`;
+    INSERT INTO user_onboarding_responses (user_id, question_id, selected_option_ids, is_active)
+    VALUES (?, ?, ?, 1)
+    ON DUPLICATE KEY UPDATE selected_option_ids = VALUES(selected_option_ids), is_active = 1;`;
 
   try {
     await query(queryString, [userId, questionId, JSON.stringify(responses)]);
@@ -151,6 +151,57 @@ export const getUserResponsesForRoadmapCalculation = async (userId) => {
     return result;
   } catch (err) {
     logger.error(`Error in getUserResponsesForRoadmapCalculation: ${err.message}`);
+    throw err;
+  }
+};
+
+export const getTotalOnboardingQuestions = async (userId) => {
+  const totalQuestionsQuery = `
+      SELECT COUNT(DISTINCT(q.id)) as totalQuestions
+      FROM onboarding_questions q
+      WHERE q.is_active = 1;
+    `;
+
+  const userAnsweredQuestionsCountQuery = `
+      SELECT COUNT(DISTINCT question_id) as answeredQuestions
+      FROM user_onboarding_responses
+      WHERE user_id = ? AND is_active = 1;
+    `;
+
+  try {
+    const [totalQuestionsResult, answeredQuestionsResult] = await Promise.all([
+      query(totalQuestionsQuery),
+      query(userAnsweredQuestionsCountQuery, [userId]),
+    ]);
+
+    logger.debug(
+      `Total onboarding questions: ${
+        totalQuestionsResult?.[0]?.totalQuestions ?? 0
+      }, Answered questions: ${answeredQuestionsResult?.[0]?.answeredQuestions ?? 0}`
+    );
+    return {
+      totalQuestions: totalQuestionsResult?.[0]?.totalQuestions ?? 0,
+      answeredQuestions: answeredQuestionsResult?.[0]?.answeredQuestions ?? 0,
+    };
+  } catch (err) {
+    logger.error(`Error in getTotalOnboardingQuestions: ${err.message}`);
+    throw err;
+  }
+};
+
+export const resetUserOnboardingResponses = async (userId) => {
+  logger.debug(userId, `data being received: [resetUserOnboardingResponses]`);
+
+  const queryString = `
+    UPDATE user_onboarding_responses
+    SET is_active = 0
+    WHERE user_id = ?;`;
+
+  try {
+    await query(queryString, [userId]);
+    return { success: true };
+  } catch (err) {
+    logger.error(`Error in resetUserOnboardingResponses: ${err.message}`);
     throw err;
   }
 };
