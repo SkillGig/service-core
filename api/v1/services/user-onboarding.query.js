@@ -40,12 +40,7 @@ export const getNextOnboardingQuestion = async (userId, previousQuestionId) => {
   // this query should fetch only the options of the roadmaps which are activated for the org that user belongs to
 
   const optionsQueryString = `
-    SELECT DISTINCT oo.id as optionId, oo.option_text as optionText
-    FROM onboarding_question_option_roadmap_mapping m
-    JOIN onboarding_options oo ON m.option_id = oo.id
-    JOIN org_roadmap_mapping orm ON m.roadmap_id = orm.roadmap_id
-    JOIN users u ON orm.roadmap_id = u.org_id
-    WHERE m.question_id = ? AND m.is_active = 1 AND oo.is_active = 1 AND orm.is_enabled = 1 AND u.id = ?;`;
+    SELECT DISTINCT oo.id as optionId, oo.option_text as optionText FROM onboarding_question_option_roadmap_mapping m JOIN onboarding_options oo ON m.option_id = oo.id AND oo.is_active = 1 JOIN org_roadmap_mapping orm ON m.roadmap_id = orm.roadmap_id AND orm.is_enabled = 1 JOIN users u ON orm.org_id = u.org_id WHERE m.question_id = ? AND m.is_active = 1 AND u.id = ? ORDER BY oo.id;`;
 
   try {
     const questionResult = await query(questionDetailsQueryString, [previousQuestionId || 0]);
@@ -100,12 +95,7 @@ export const getOptionsMappedForQuestion = async (questionId, userId) => {
   logger.debug(questionId, userId, `data being received: [getOptionsMappedForQuestion]`);
 
   const queryString = `
-    SELECT DISTINCT oo.id as optionId, oo.option_text as optionText
-    FROM onboarding_question_option_roadmap_mapping m
-    JOIN onboarding_options oo ON m.option_id = oo.id
-    JOIN org_roadmap_mapping orm ON m.roadmap_id = orm.roadmap_id
-    JOIN users u ON orm.roadmap_id = u.org_id
-    WHERE m.question_id = ? AND m.is_active = 1 AND oo.is_active = 1 AND orm.is_enabled = 1 AND u.id = ?;`;
+    SELECT DISTINCT oo.id as optionId, oo.option_text as optionText FROM onboarding_question_option_roadmap_mapping m JOIN onboarding_options oo ON m.option_id = oo.id AND oo.is_active = 1 JOIN org_roadmap_mapping orm ON m.roadmap_id = orm.roadmap_id AND orm.is_enabled = 1 JOIN users u ON orm.org_id = u.org_id WHERE m.question_id = ? AND m.is_active = 1 AND u.id = ? ORDER BY oo.id;`;
 
   try {
     const result = await query(queryString, [questionId, userId]);
