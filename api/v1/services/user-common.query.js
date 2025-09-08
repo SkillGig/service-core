@@ -1395,33 +1395,41 @@ export const getUserRoadmapUpcomingCoursesQuery = async (userId, roadmapId) => {
 
   const queryString = `
     SELECT
-      rcm.id AS roadmapCourseId,
-      rcm.course_id AS courseId,
-      c.title AS courseTitle,
-      c.description AS courseDescription,
-      c.thumbnail_url AS courseThumbnailUrl,
-      rcm.order AS orderSequence,
-      CASE
-        WHEN ucp.id IS NOT NULL THEN
-          CASE
-            WHEN ucp.is_completed = 1 THEN 'completed'
-            ELSE 'in-progress'
-          END
-        WHEN rcm.prerequisite_course_id IS NULL THEN 'ready-to-enroll'
-        WHEN prereq_ucp.is_completed = 1 THEN 'ready-to-enroll'
-        ELSE 'locked'
-      END AS courseStatus
-    FROM roadmap_courses_mapping rcm
-    INNER JOIN courses c ON rcm.course_id = c.id
-    LEFT JOIN user_course_progress ucp ON rcm.id = ucp.roadmap_course_id AND ucp.user_id = ?
-    LEFT JOIN user_course_progress prereq_ucp ON rcm.prerequisite_course_id = prereq_ucp.roadmap_course_id AND prereq_ucp.user_id = ?
-    WHERE rcm.roadmap_id = ? AND (ucp.id IS NULL OR ucp.is_completed = 0)
-    having courseStatus != 'in-progress'
+    rcm.id AS roadmapCourseId,
+    rcm.course_id AS courseId,
+    c.title AS courseTitle,
+    c.description AS courseDescription,
+    c.thumbnail_url AS courseThumbnailUrl,
+    rcm.order AS orderSequence,
+    t.name AS authorName,
+    GROUP_CONCAT(DISTINCT tg.title) AS tags,
+    ROUND(AVG(cr.rating), 2) AS averageRating,
+    COUNT(DISTINCT ucp_all.user_id) AS enrolledCount,
+        CASE
+            WHEN rcm.prerequisite_course_id IS NULL THEN 'ready-to-enroll'
+            WHEN prereq_ucp.is_completed = 1 THEN 'ready-to-enroll'
+            ELSE 'locked'
+        END AS courseStatus
+    FROM
+        roadmap_courses_mapping rcm
+        INNER JOIN courses c ON rcm.course_id = c.id
+        LEFT JOIN tutors t ON c.tutor_id = t.id
+        LEFT JOIN course_tags ct ON c.id = ct.course_id
+        LEFT JOIN tags tg ON ct.tag_id = tg.id
+        LEFT JOIN course_reviews cr ON c.id = cr.course_id
+        AND cr.is_active = 1
+        LEFT JOIN user_course_progress ucp_all ON rcm.id = ucp_all.roadmap_course_id
+        LEFT JOIN user_course_progress prereq_ucp ON rcm.prerequisite_course_id = prereq_ucp.roadmap_course_id
+        AND prereq_ucp.user_id = ?
+    WHERE
+        rcm.roadmap_id = ?
+    GROUP BY
+        rcm.id
     ORDER BY rcm.order;
   `;
 
   try {
-    const result = await query(queryString, [userId, userId, roadmapId]);
+    const result = await query(queryString, [userId, roadmapId]);
     return result;
   } catch (error) {
     logger.error(error, `error being received: [getUserRoadmapUpcomingCoursesQuery/error]`);

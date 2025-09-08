@@ -364,6 +364,10 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
         estimatedDuration: course.estimatedDuration,
         orderSequence: course.orderSequence,
         courseStatus: course.courseStatus,
+        authorName: course.authorName,
+        courseTags: course.tags ? course.tags.split(",") : [],
+        averageRating: course.averageRating ? parseFloat(course.averageRating) : 0,
+        enrolledUsers: course.enrolledUsers || 0,
       })),
     };
 
