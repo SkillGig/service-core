@@ -107,11 +107,16 @@ export const userDetailsQuery = async (userId) => {
        oec.show_leaderboard AS showLeaderBoard,
        oec.user_streaks  AS showUserStreaks,
        oec.show_quizzes AS showQuizzes,
-       oec.branding_title AS brandingTitle,
-       oec.branding_message AS brandingMessage
+    oec.branding_title AS brandingTitle,
+    oec.branding_message AS brandingMessage,
+    ob.branch_name AS branchName,
+    si.start_date AS userStartDate,
+    si.end_date AS userEndDate
     FROM users u
             INNER JOIN organizations o ON u.org_id = o.id
             INNER JOIN org_extra_configs oec ON o.id = oec.org_id
+            INNER JOIN student_info si ON u.student_id = si.id
+            INNER JOIN org_branches ob ON si.branch_id = ob.id
     WHERE u.id = ? AND o.is_active = 1;`;
   try {
     const result = await query(queryString, [userId]);

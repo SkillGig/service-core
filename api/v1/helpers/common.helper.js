@@ -25,22 +25,18 @@ export const transformRoadmapData = (roadmapDetails) => {
   const transformCourse = (course) => ({
     courseId: course.course_id,
     courseTitle: course.course_title,
-    thumbnailUrl: course.thumbnail_url,
-    tutor: course.tutor_name,
-    tags: course.tags ? course.tags.split(",").map((tag) => tag.trim()) : [],
-    rating: course.rating ? parseFloat(course.rating) : null,
-    enrolledCount: course.enrolled_count || 0,
+    courseThumbnailUrl: course.thumbnail_url,
+    authorName: course.tutor_name,
+    courseTags: course.tags ? course.tags.split(",").map((tag) => tag.trim()) : [],
+    averageRating: course.rating ? parseFloat(course.rating) : null,
+    enrolledUsers: course.enrolled_count || 0,
     isUserEnrolled: false,
   });
 
   // Categorize courses by level
   const categories = {
     starterKit: [],
-    levels: {
-      beginner: [],
-      intermediate: [],
-      advanced: [],
-    },
+    levels: [],
     addOns: [],
   };
 
@@ -52,13 +48,13 @@ export const transformRoadmapData = (roadmapDetails) => {
         categories.starterKit.push(transformedCourse);
         break;
       case "beginner":
-        categories.levels.beginner.push(transformedCourse);
+        categories.levels.push(transformedCourse);
         break;
       case "intermediate":
-        categories.levels.intermediate.push(transformedCourse);
+        categories.levels.push(transformedCourse);
         break;
       case "advanced":
-        categories.levels.advanced.push(transformedCourse);
+        categories.levels.push(transformedCourse);
         break;
       case "add-on":
         categories.addOns.push(transformedCourse);
@@ -507,7 +503,7 @@ export const transformAllModuleDetailsForNotEnrolledCourse = (data) => {
 
   data.forEach((item) => {
     const moduleWeek = item.moduleWeek || item.module_week || 1; // Handle both field names with fallback
-    
+
     if (!moduleMap[moduleWeek]) {
       moduleMap[moduleWeek] = {};
     }
@@ -537,30 +533,34 @@ export const transformAllModuleDetailsForNotEnrolledCourse = (data) => {
       // Quiz details with actual data from query
       quizXpPoints: item.quizXpPoints || null,
       quizMappingId: item.quizMappingId || null,
-      currentQuizAttempt: item.currentQuizAttemptId ? {
-        attemptId: item.quizAttemptId,
-        score: item.quizScore,
-        totalPoints: item.quizTotalPoints,
-        status: item.quizAttemptStatus,
-        startedAt: item.quizStartedAt,
-        completedAt: item.quizCompletedAt,
-      } : null,
+      currentQuizAttempt: item.currentQuizAttemptId
+        ? {
+            attemptId: item.quizAttemptId,
+            score: item.quizScore,
+            totalPoints: item.quizTotalPoints,
+            status: item.quizAttemptStatus,
+            startedAt: item.quizStartedAt,
+            completedAt: item.quizCompletedAt,
+          }
+        : null,
       // Project details with actual data from query
       projectXpPoints: item.projectXpPoints || null,
       projectMappingId: item.projectMappingId || null,
-      latestProjectSubmission: item.latestProjectSubmissionId ? {
-        submissionId: item.projectSubmissionId,
-        attemptNumber: item.projectAttemptNumber,
-        githubUrl: item.projectGithubUrl,
-        docUrl: item.projectDocUrl,
-        deployedUrl: item.projectDeployedUrl,
-        submissionComment: item.projectSubmissionComment,
-        status: item.projectSubmissionStatus,
-        tutorComment: item.projectTutorComment,
-        reviewedBy: item.projectReviewedBy,
-        submittedAt: item.projectSubmittedAt,
-        reviewedAt: item.projectReviewedAt,
-      } : null,
+      latestProjectSubmission: item.latestProjectSubmissionId
+        ? {
+            submissionId: item.projectSubmissionId,
+            attemptNumber: item.projectAttemptNumber,
+            githubUrl: item.projectGithubUrl,
+            docUrl: item.projectDocUrl,
+            deployedUrl: item.projectDeployedUrl,
+            submissionComment: item.projectSubmissionComment,
+            status: item.projectSubmissionStatus,
+            tutorComment: item.projectTutorComment,
+            reviewedBy: item.projectReviewedBy,
+            submittedAt: item.projectSubmittedAt,
+            reviewedAt: item.projectReviewedAt,
+          }
+        : null,
     });
   });
 
@@ -579,7 +579,8 @@ export const transformAllModuleDetailsForNotEnrolledCourse = (data) => {
       const sections = Object.values(moduleMap[moduleWeek]).map((section) => {
         const totalChapters = section.chapters.length;
         const completedChapters = section.chapters.filter((ch) => ch.isCompleted).length;
-        const sectionCompletionPercent = totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
+        const sectionCompletionPercent =
+          totalChapters > 0 ? Math.round((completedChapters / totalChapters) * 100) : 0;
         const isUnlocked = section.chapters.some((ch) => ch.isUnlocked);
         const isCompleted = completedChapters === totalChapters && totalChapters > 0;
 
@@ -597,8 +598,11 @@ export const transformAllModuleDetailsForNotEnrolledCourse = (data) => {
 
       // Calculate module-level statistics
       const totalSections = sections.length;
-      const completedSections = sections.filter((section) => section.sectionOverallSummary.isCompleted).length;
-      const moduleCompletionPercent = totalSections > 0 ? Math.round((completedSections / totalSections) * 100) : 0;
+      const completedSections = sections.filter(
+        (section) => section.sectionOverallSummary.isCompleted
+      ).length;
+      const moduleCompletionPercent =
+        totalSections > 0 ? Math.round((completedSections / totalSections) * 100) : 0;
       const isModuleUnlocked = sections.some((section) => section.sectionOverallSummary.isUnlocked);
       const isModuleCompleted = completedSections === totalSections && totalSections > 0;
 

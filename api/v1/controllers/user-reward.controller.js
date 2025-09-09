@@ -17,6 +17,7 @@ import {
   getUserAchievementsQuery,
 } from "../services/user-reward.query.js";
 import Bluebird from "bluebird";
+import { sendUserNotification } from "../helpers/notification.helper.js";
 const Promise = Bluebird;
 
 export const awardXPForTask = async (req, res) => {
@@ -237,8 +238,8 @@ export const awardXPForTask = async (req, res) => {
       });
     }
 
-    // Attach notifications to response for external notification service
-    response.notifications = notifications;
+    // Produce notifications via notification service
+    await sendUserNotification(notifications);
 
     return sendApiResponse(res, response);
   } catch (err) {
@@ -310,19 +311,15 @@ export const getWeeklyStreakSummary = async (req, res) => {
 
       console.log(date, currentDate);
 
-        // Compare only the date part (YYYY-MM-DD) to avoid gaps/overlaps
-        const streakDateStr = date.toISOString().slice(0, 10);
-        const currentDateStr = currentDate.toISOString().slice(0, 10);
-        return {
-          streakDate: formatDate(date),
-          day: getDayName(date),
-          status: isActive
-            ? "done"
-            : streakDateStr >= currentDateStr
-            ? "yet-to-do"
-            : "not-done",
-          isCurrentDay: date.toDateString() === currentDate.toDateString(),
-        };
+      // Compare only the date part (YYYY-MM-DD) to avoid gaps/overlaps
+      const streakDateStr = date.toISOString().slice(0, 10);
+      const currentDateStr = currentDate.toISOString().slice(0, 10);
+      return {
+        streakDate: formatDate(date),
+        day: getDayName(date),
+        status: isActive ? "done" : streakDateStr >= currentDateStr ? "yet-to-do" : "not-done",
+        isCurrentDay: date.toDateString() === currentDate.toDateString(),
+      };
     });
 
     const response = {

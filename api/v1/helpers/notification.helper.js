@@ -58,3 +58,25 @@ export const sendModuleUnlockedNotification = async ({
     throw error;
   }
 };
+
+/**
+ * Send a generic notification payload to the notification service's produce endpoint.
+ * If an auth header is provided it will be forwarded to the notification service.
+ * @param {Object} payload
+ */
+export const sendUserNotification = async (payload) => {
+  const notificationService = nconf.get("notificationService");
+  const url = `${notificationService.baseUrl}${notificationService.produceNewNotificationUrl}`;
+
+  try {
+    const response = await axios.post(url, payload);
+    logger.debug("User notification produced:", response.data);
+    if (response.status !== 200) {
+      throw new Error(`Failed to produce notification: ${response.statusText}`);
+    }
+    return response.data;
+  } catch (error) {
+    logger.error("Error producing user notification:", error?.response?.data || error.message);
+    throw error;
+  }
+};
