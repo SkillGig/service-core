@@ -1655,6 +1655,7 @@ export const getUserCompletedCertificatesQuery = async (userId) => {
       const courseDetails = await getCourseBasicDetailsQuery(certificate.courseId);
       return {
         ...certificate,
+        courseStatus: "completed",
         courseTitle: courseDetails ? courseDetails.courseTitle : null,
         courseThumbnailUrl: courseDetails ? courseDetails.courseThumbnailUrl : null,
         courseLevel: courseDetails ? courseDetails.courseLevel : null,
