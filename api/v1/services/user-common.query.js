@@ -1660,8 +1660,8 @@ export const getUserCompletedCertificatesQuery = async (userId) => {
         courseLevel: courseDetails ? courseDetails.courseLevel : null,
         courseDescription: courseDetails ? courseDetails.courseDescription : null,
         tutorId: courseDetails ? courseDetails.tutorId : null,
-        tutorName: courseDetails ? courseDetails.tutorName : null,
-        tagNames: courseDetails ? courseDetails.tagNames : null,
+        authorName: courseDetails ? courseDetails.tutorName : null,
+        courseTags: courseDetails ? courseDetails.tagNames : null,
       };
     });
     return finalResult;
