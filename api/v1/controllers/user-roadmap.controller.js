@@ -80,28 +80,6 @@ export const getUserCurrentRoadmapDetails = async (req, res) => {
   }
 };
 
-// export const fetchUserEnrolledRoadmapsWithCurrentCourse = async (req, res) => {
-//   const userId = req.user.userId;
-
-//   try {
-//     const userEnrolledRoadmaps = await getUserEnrolledRoadmapsWithCurrentCourseQuery(userId);
-//     if (userEnrolledRoadmaps.length) {
-
-//     } else {
-//       return sendApiResponse(res, { currentRoadmapDetails: [] });
-//     }
-//   } catch (error) {
-//     logger.error(error, `error being received: [fetchUserEnrolledRoadmapsWithCurrentCourse]`);
-//     return sendApiError(
-//       res,
-//       {
-//         notifyUser: "Something went wrong. Please try again!",
-//       },
-//       500
-//     );
-//   }
-// }
-
 export const fetchUserEnrolledRoadmapAbstractDetails = async (req, res) => {
   const userId = req.user.userId;
 

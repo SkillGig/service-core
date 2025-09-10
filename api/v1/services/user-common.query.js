@@ -1662,7 +1662,7 @@ export const getUserCompletedCertificatesQuery = async (userId) => {
         courseDescription: courseDetails ? courseDetails.courseDescription : null,
         tutorId: courseDetails ? courseDetails.tutorId : null,
         authorName: courseDetails ? courseDetails.tutorName : null,
-        courseTags: courseDetails ? courseDetails.tagNames : null,
+        courseTags: courseDetails ? String(courseDetails.tagNames).split(",") : null,
       };
     });
     return finalResult;
