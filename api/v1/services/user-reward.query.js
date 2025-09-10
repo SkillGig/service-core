@@ -486,25 +486,28 @@ export const checkAndAwardBadgesQuery = async (userId, streakInfo, totalXP, task
   }
 };
 
-export const getOrgLeaderboardWithCurrentUser = async (userId, orgId) => {
+export const getOrgLeaderboardWithCurrentUser = async (userId) => {
+  // This query builds a leaderboard using the current total_xp from user_level_info
+  // and ranks users within the same organisation as the provided userId.
   const queryString = `
     WITH ranked_users AS (
-      SELECT 
+      SELECT
         u.id AS userId,
         u.name AS name,
         u.enrolled_at AS createdAt,
-        CAST(COALESCE(SUM(ush.xp_earned), 0) AS UNSIGNED) AS totalXP,
+        CAST(COALESCE(uli.total_xp, 0) AS UNSIGNED) AS totalXP,
         RANK() OVER (
-          ORDER BY 
-            COALESCE(SUM(ush.xp_earned), 0) DESC,
-            u.enrolled_at ASC
+          ORDER BY CAST(COALESCE(uli.total_xp, 0) AS UNSIGNED) DESC,
+                   u.enrolled_at ASC
         ) AS rankOfUser
       FROM users u
-      LEFT JOIN user_streak_history ush ON ush.user_id = u.id
-      WHERE u.org_id = ?
-      GROUP BY u.id
+      LEFT JOIN user_level_info uli ON uli.user_id = u.id
+      WHERE u.org_id = (
+        SELECT org_id FROM users WHERE id = ?
+      )
+      GROUP BY u.id, u.name, u.enrolled_at, uli.total_xp
     )
-    SELECT 
+    SELECT
       userId, name, totalXP, rankOfUser,
       CASE WHEN userId = ? THEN TRUE ELSE FALSE END AS currentUser
     FROM ranked_users
@@ -513,7 +516,7 @@ export const getOrgLeaderboardWithCurrentUser = async (userId, orgId) => {
   `;
 
   try {
-    return await query(queryString, [orgId, userId, userId]);
+    return await query(queryString, [userId, userId, userId]);
   } catch (error) {
     logger.error(error, "[getOrgLeaderboardWithCurrentUser/error]");
     throw error;
