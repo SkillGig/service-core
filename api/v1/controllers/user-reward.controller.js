@@ -797,8 +797,6 @@ export const getUserAchievements = async (req, res) => {
 
     // Format the response to match the screenshot structure
     const response = {
-      success: true,
-
       currentLevel: achievements.userLevel
         ? {
             levelId: achievements.userLevel.levelId,
