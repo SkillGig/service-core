@@ -188,7 +188,7 @@ export const getRoadmapDetailsQuery = async (roadmapId) => {
       AND r.is_active = 1
       AND c.is_active = 1
     GROUP BY c.id
-    ORDER BY rcm.order, c.level;`;
+    ORDER BY rcm.display_order, c.level;`;
 
   try {
     const result = await query(queryString, [roadmapId]);
@@ -403,13 +403,13 @@ export const getAllCoursesMappedUnderRoadmapQuery = async (roadmapId, conn) => {
             rcm.course_id AS courseId,
             rcm.is_mandatory_to_proceed AS isMandatory,
             rcm.weekly_unlock AS weeklyUnlock,
-            rcm.order AS courseOrder,
+            rcm.display_order AS courseOrder,
             rcm.prerequisite_course_id AS preRequisiteCourseId
     FROM roadmap_courses_mapping rcm
     INNER JOIN roadmaps r ON rcm.roadmap_id = r.id
     INNER JOIN courses c ON rcm.course_id = c.id
     INNER JOIN tutors t ON c.tutor_id = t.id
-    WHERE rcm.roadmap_id = ? AND rcm.is_active = 1 AND c.is_active = 1 ORDER By rcm.order;`;
+    WHERE rcm.roadmap_id = ? AND rcm.is_active = 1 AND c.is_active = 1 ORDER By rcm.display_order;`;
   try {
     if (conn) {
       return await queryWithConn(conn, queryString, [roadmapId]);
@@ -863,7 +863,7 @@ export const getCourseMappingDetailsQuery = async (roadmapCourseId, conn) => {
   const queryString = `
     SELECT rcm.id AS roadmapCourseId, rcm.roadmap_id AS roadmapId, rcm.course_id AS courseId,
            rcm.is_mandatory_to_proceed AS isMandatory, rcm.weekly_unlock AS isWeeklyUnlock,
-           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
+           rcm.display_order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
     FROM roadmap_courses_mapping rcm
     WHERE rcm.id = ?;`;
 
@@ -922,7 +922,7 @@ export const userCurrentRoadmapCourseStatusQuery = async ({
           ucp.created_at AS enrolledAt,
            ucp.is_completed AS isCompleted, ucp.completed_at AS completedAt,
            rcm.prerequisite_course_id AS prerequisiteCourseId, rcm.weekly_unlock AS isWeeklyUnlock,
-           rcm.order AS courseOrder, rcm.is_active AS isActive,
+           rcm.display_order AS courseOrder, rcm.is_active AS isActive,
             ucc.id AS userCourseCertificateId, ucc.certificate_url AS certificateUrl,
            c.id AS courseId, c.title AS courseTitle, c.thumbnail_url AS courseThumbnailUrl,
            c.level AS courseLevel, c.description AS courseDescription, c.tutor_id AS tutorId
@@ -976,7 +976,7 @@ export const getRoadmapCourseMappingDetailsUnderRoadmapQuery = async (
   const queryString = `
     SELECT rcm.id AS roadmapCourseId, rcm.roadmap_id AS roadmapId, rcm.course_id AS courseId,
            rcm.is_mandatory_to_proceed AS isMandatory, rcm.weekly_unlock AS isWeeklyUnlock,
-           rcm.order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
+           rcm.display_order AS courseOrder, rcm.prerequisite_course_id AS preRequisiteCourseId
     FROM roadmap_courses_mapping rcm
     WHERE rcm.id = ? AND rcm.roadmap_id = ?;`;
 
@@ -1405,7 +1405,7 @@ export const getUserRoadmapUpcomingCoursesQuery = async (userId, roadmapId) => {
     c.title AS courseTitle,
     c.description AS courseDescription,
     c.thumbnail_url AS courseThumbnailUrl,
-    rcm.order AS orderSequence,
+    rcm.display_order AS orderSequence,
     t.name AS authorName,
     GROUP_CONCAT(DISTINCT tg.title) AS tags,
     ROUND(AVG(cr.rating), 2) AS averageRating,
@@ -1430,7 +1430,7 @@ export const getUserRoadmapUpcomingCoursesQuery = async (userId, roadmapId) => {
         rcm.roadmap_id = ?
     GROUP BY
         rcm.id
-    ORDER BY rcm.order;
+    ORDER BY rcm.display_order;
   `;
 
   try {
@@ -1526,7 +1526,7 @@ export const getRoadmapCoursesWithStatusQuery = async (userId, roadmapId) => {
     SELECT 
       rcm.id AS roadmapCourseId,
       rcm.course_id AS courseId,
-      rcm.order AS courseOrder,
+      rcm.display_order AS courseOrder,
       rcm.prerequisite_course_id AS prerequisiteCourseId,
       rcm.is_mandatory_to_proceed AS isMandatory,
       rcm.weekly_unlock AS weeklyUnlock,
@@ -1561,12 +1561,12 @@ export const getRoadmapCoursesWithStatusQuery = async (userId, roadmapId) => {
     WHERE rcm.roadmap_id = ? 
       AND rcm.is_active = 1
     GROUP BY 
-      rcm.id, rcm.course_id, rcm.order, rcm.prerequisite_course_id, 
+      rcm.id, rcm.course_id, rcm.display_order, rcm.prerequisite_course_id, 
       rcm.is_mandatory_to_proceed, rcm.weekly_unlock,
       c.title, c.description, c.thumbnail_url, c.level,
       ucp.id, ucp.completed_modules, ucp.progress_percent, ucp.created_at, 
       ucp.completed_at, ucp.is_completed, prereq_ucp.is_completed
-    ORDER BY rcm.order;
+    ORDER BY rcm.display_order;
   `;
 
   try {
