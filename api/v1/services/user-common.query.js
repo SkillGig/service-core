@@ -1317,6 +1317,7 @@ export const getUserRoadmapOngoingCourseQuery = async (userEnrolledRoadmapId) =>
   const queryString = `
     SELECT
       ucp.roadmap_course_id AS roadmapCourseId,
+      r.id AS roadmapId,
       ucp.course_id AS courseId,
       ucp.completed_modules AS completedModules,
       ucp.total_modules AS totalModules,
@@ -1793,6 +1794,33 @@ export const getUserOrgId = async (userId) => {
     return await query(orgQuery, [userId]);
   } catch (error) {
     logger.error(error, "[getUserOrgId/error]");
+    throw error;
+  }
+};
+
+export const getTutorDetailsUsingCourseId = async (courseId) => {
+  logger.debug(courseId, `data being received: [getTutorDetailsUsingCourseId]`);
+
+  const queryString = `
+    SELECT t.id              AS tutorId,
+       t.name            AS tutorName,
+       t.profile_picture as profilePicture,
+       t.description     as tutorDescription,
+       t.qualification   as qualification,
+       t.designation     as tutorDesignation
+    FROM courses c
+            INNER JOIN tutors t ON c.tutor_id = t.id
+    WHERE c.id = ?
+      AND c.is_active = 1
+      AND t.is_active = 1
+    LIMIT 1;
+  `;
+
+  try {
+    const result = await query(queryString, [courseId]);
+    return result.length ? result[0] : null;
+  } catch (error) {
+    logger.error(error, `error being received: [getTutorDetailsUsingCourseId/error]`);
     throw error;
   }
 };

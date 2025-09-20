@@ -28,6 +28,7 @@ import {
   getUserEnrolledRoadmapsQuery,
   getModuleDetailsBasedOnRoadmapCourseIdQuery,
   checkIfCourseIsAlreadyEnrolledToCourseQuery,
+  getTutorDetailsUsingCourseId,
 } from "../services/user-common.query.js";
 
 export const getCourseDetails = async (req, res) => {
@@ -58,7 +59,7 @@ export const getCourseDetails = async (req, res) => {
       faqs,
     ] = await Promise.all([
       getCourseDetailsQuery(courseId),
-      getTutorDetailsQuery(courseIdInfo.tutorId),
+      getTutorDetailsUsingCourseId(courseIdInfo.courseId),
       getCourseTagsQuery(courseId),
       getCourseLearningsQuery(courseId),
       getCourseReviewsQuery(courseId),
@@ -88,15 +89,15 @@ export const getCourseDetails = async (req, res) => {
       courseThumbnailUrl: preReqCourse?.courseThumbnailUrl || "",
     });
 
-    let currentRoadmapStatus = null;
-    let currentRoadmapCourseStatus = null;
+    let roadmapStatus = null;
+    let courseStatus = null;
     let preRequisiteCourseDetails = null;
     let certificateUrl = null;
 
     if (!userStatusOfCourse) {
       const roadmapDetails = await getCurrentRoadmapStatusQuery(userId, roadmapId);
       if (roadmapDetails.length > 0) {
-        currentRoadmapStatus = "in-progress";
+        roadmapStatus = "in-progress";
         const mappingDetails = await getRoadmapCourseMappingDetailsUnderRoadmapQuery(
           roadmapCourseId,
           roadmapId
@@ -106,14 +107,14 @@ export const getCourseDetails = async (req, res) => {
           "Fetched roadmap course mapping details"
         );
         if (mappingDetails) {
-          currentRoadmapCourseStatus = "locked";
+          courseStatus = "locked";
           const preRequisiteCourse = await userCurrentRoadmapCourseStatusQuery({
             userId,
             roadmapId: mappingDetails.roadmapId,
             courseId: mappingDetails.preRequisiteCourseId,
           });
           if (preRequisiteCourse) {
-            currentRoadmapCourseStatus = preRequisiteCourse.isCompleted
+            courseStatus = preRequisiteCourse.isCompleted
               ? "ready-to-enroll"
               : "in-progress";
             preRequisiteCourseDetails = await buildPreReqDetails(
@@ -122,7 +123,7 @@ export const getCourseDetails = async (req, res) => {
               preRequisiteCourse
             );
           } else {
-            currentRoadmapCourseStatus = "locked";
+            courseStatus = "locked";
             const preRequisiteCourse = await getTotalSectionsUnderRoadmapCourseQuery(
               mappingDetails.preRequisiteCourseId
             );
@@ -134,12 +135,12 @@ export const getCourseDetails = async (req, res) => {
           }
         }
       } else {
-        currentRoadmapStatus = "not-enrolled";
-        currentRoadmapCourseStatus = "not-enrolled";
+        roadmapStatus = "not-enrolled";
+        courseStatus = "not-enrolled";
       }
     } else {
-      currentRoadmapStatus = "in-progress";
-      currentRoadmapCourseStatus = userStatusOfCourse.isCompleted ? "completed" : "in-progress";
+      roadmapStatus = "in-progress";
+      courseStatus = userStatusOfCourse.isCompleted ? "completed" : "in-progress";
       certificateUrl = userStatusOfCourse.isCompleted
         ? userStatusOfCourse?.certificateUrl ?? null
         : null;
@@ -147,7 +148,7 @@ export const getCourseDetails = async (req, res) => {
 
     // Determine ongoing current module week
     let ongoingCurrentModuleWeek = null;
-    if (currentRoadmapCourseStatus === "in-progress") {
+    if (courseStatus === "in-progress") {
       ongoingCurrentModuleWeek = currentModuleDetails?.moduleWeek || 1;
     }
 
@@ -159,8 +160,8 @@ export const getCourseDetails = async (req, res) => {
       learnings,
       reviews,
       ...transformedModules,
-      currentRoadmapStatus,
-      currentRoadmapCourseStatus,
+      roadmapStatus,
+      courseStatus,
       certificateUrl,
       preRequisiteCourseDetails,
       ongoingCurrentModuleWeek,
@@ -304,6 +305,7 @@ export const getUserCurrentOngoingCourseDetailsController = async (req, res) => 
       currentOngoingCourses: ongoingCoursesDetails
         ? ongoingCoursesDetails.map((course) => ({
             roadmapCourseId: course.roadmapCourseId,
+            roadmapId: course.roadmapId,
             courseId: course.courseId,
             courseTitle: course.courseTitle,
             courseDescription: course.courseDescription,
